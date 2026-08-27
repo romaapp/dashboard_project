@@ -1,0 +1,26 @@
+[theme]
+# Базовая тема (может быть "light" или "dark")
+base = "light"
+
+# Основные цвета для светлой темы
+primaryColor = "#2196F3"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F0F2F6"
+textColor = "#262730"
+font = "sans-serif"
+
+# Настройки для темной темы
+[theme.dark]
+primaryColor = "#2196F3"
+backgroundColor = "#1E1E1E"
+secondaryBackgroundColor = "#2D2D2D"
+textColor = "#FFFFFF"
+font = "sans-serif"
+
+# Настройки для светлой темы
+[theme.light]
+primaryColor = "#2196F3"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F0F2F6"
+textColor = "#262730"
+font = "sans-serif"
