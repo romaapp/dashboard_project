@@ -13,7 +13,7 @@ from queries import AUTO_REFRESH_CLIENTS
 
 st.set_page_config(
     page_title="Выдача клиентам",
-    page_icon="🔄",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -50,24 +50,12 @@ st.markdown(
     """
     <style>
 
-        header {
-            display: none !important;
-        }
-
-        .stAppHeader {
-            display: none !important;
-        }
-
-        [data-testid="stHeader"] {
-            display: none !important;
-        }
-
         .main > div {
-            padding-top: 0px !important;
+            padding-top: 1rem !important;
         }
 
         .block-container {
-            padding-top: 0px !important;
+            padding-top: 1rem !important;
         }
 
         /* Блок таймера */
@@ -101,7 +89,7 @@ engine = Config.get_engine()
 # ФУНКЦИЯ ЗАГРУЗКИ ДАННЫХ
 # ============================================================
 
-@st.cache_data(ttl=10)
+@st.cache_data
 def load_data(query_name, params=None):
 
     try:
@@ -206,12 +194,46 @@ def show_reports():
                 include=["number"]
             ).columns
 
+
 # ============================================================
 # SIDEBAR
 # ============================================================
 
 with st.sidebar:
 
+    # --------------------------------------------------------
+    # РУЧНОЕ ОБНОВЛЕНИЕ
+    # --------------------------------------------------------
+
+    if st.button(
+        "🔄 Обновить данные",
+        use_container_width=True
+    ):
+
+        now = datetime.now()
+
+        # ----------------------------------------------------
+        # Обновляем время последнего обновления
+        # ----------------------------------------------------
+
+        st.session_state.last_refresh_time = now
+
+        # ----------------------------------------------------
+        # Перезапускаем таймер с 120 секунд
+        # ----------------------------------------------------
+
+        st.session_state.next_refresh_time = (
+            now.timestamp() + REFRESH_INTERVAL
+        )
+
+        # ----------------------------------------------------
+        # Очищаем кэш
+        # ----------------------------------------------------
+
+        load_data.clear()
+
+        st.rerun()
+        
     st.header("⚙️ Настройки")
 
     # --------------------------------------------------------
@@ -256,39 +278,6 @@ with st.sidebar:
             st.session_state.next_refresh_time = (
                 datetime.now().timestamp()
             )
-
-        # ----------------------------------------------------
-        # Очищаем кэш
-        # ----------------------------------------------------
-
-        load_data.clear()
-
-        st.rerun()
-
-    # --------------------------------------------------------
-    # РУЧНОЕ ОБНОВЛЕНИЕ
-    # --------------------------------------------------------
-
-    if st.button(
-        "🔄 Обновить сейчас",
-        use_container_width=True
-    ):
-
-        now = datetime.now()
-
-        # ----------------------------------------------------
-        # Обновляем время последнего обновления
-        # ----------------------------------------------------
-
-        st.session_state.last_refresh_time = now
-
-        # ----------------------------------------------------
-        # Перезапускаем таймер с 120 секунд
-        # ----------------------------------------------------
-
-        st.session_state.next_refresh_time = (
-            now.timestamp() + REFRESH_INTERVAL
-        )
 
         # ----------------------------------------------------
         # Очищаем кэш
