@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 from datetime import datetime
-
 
 from config import Config
 from queries import AUTO_REFRESH_OUT
@@ -14,9 +12,9 @@ from queries import AUTO_REFRESH_OUT
 
 st.set_page_config(
     page_title="Дашборд",
-    page_icon="📦",
+    page_icon="📊",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 
@@ -24,15 +22,15 @@ st.set_page_config(
 # КОНСТАНТЫ
 # ============================================================
 
-# Обновление данных из БД
+# Интервал обновления данных из БД
 REFRESH_INTERVAL = 120
 
-# Переключение отчета в карусели
+# Интервал переключения отчета
 CAROUSEL_INTERVAL = 15
 
 
 # ============================================================
-# ИНИЦИАЛИЗАЦИЯ SESSION STATE
+# SESSION STATE
 # ============================================================
 
 # ------------------------------------------------------------
@@ -40,15 +38,8 @@ CAROUSEL_INTERVAL = 15
 # ------------------------------------------------------------
 
 if "auto_refresh_enabled" not in st.session_state:
+
     st.session_state.auto_refresh_enabled = False
-
-
-# ------------------------------------------------------------
-# Время последнего обновления данных
-# ------------------------------------------------------------
-
-if "last_refresh_time" not in st.session_state:
-    st.session_state.last_refresh_time = datetime.now()
 
 
 # ------------------------------------------------------------
@@ -56,6 +47,7 @@ if "last_refresh_time" not in st.session_state:
 # ------------------------------------------------------------
 
 if "next_refresh_time" not in st.session_state:
+
     st.session_state.next_refresh_time = (
         datetime.now().timestamp()
         + REFRESH_INTERVAL
@@ -63,18 +55,20 @@ if "next_refresh_time" not in st.session_state:
 
 
 # ------------------------------------------------------------
-# Текущий отчет карусели
+# Текущий отчет
 # ------------------------------------------------------------
 
 if "current_report" not in st.session_state:
+
     st.session_state.current_report = 0
 
 
 # ------------------------------------------------------------
-# Время следующего переключения карусели
+# Время следующего переключения отчета
 # ------------------------------------------------------------
 
 if "next_carousel_time" not in st.session_state:
+
     st.session_state.next_carousel_time = (
         datetime.now().timestamp()
         + CAROUSEL_INTERVAL
@@ -86,6 +80,7 @@ if "next_carousel_time" not in st.session_state:
 # ------------------------------------------------------------
 
 if "carousel_enabled" not in st.session_state:
+
     st.session_state.carousel_enabled = True
 
 
@@ -95,117 +90,94 @@ if "carousel_enabled" not in st.session_state:
 
 st.markdown(
     """
-    <style>
+<style>
 
-        /* -------------------------------------------------- */
-        /* Убираем стандартный header Streamlit */
-        /* -------------------------------------------------- */
+    /* ====================================================== */
+    /* Основной контейнер */
+    /* ====================================================== */
 
-        header {
-            display: none !important;
-        }
+    .main > div {
+        padding-top: 3rem !important;
+    }
 
-        .stAppHeader {
-            display: none !important;
-        }
+    .block-container {
+        padding-top: 3rem !important;
+    }
 
-        [data-testid="stHeader"] {
-            display: none !important;
-        }
+    /* ====================================================== */
+    /* Номер и название отчета */
+    /* ====================================================== */
 
-
-        /* -------------------------------------------------- */
-        /* Убираем верхний отступ */
-        /* -------------------------------------------------- */
-
-        .main > div {
-            padding-top: 0px !important;
-        }
-
-        .block-container {
-            padding-top: 0px !important;
-        }
+    .carousel-counter {
+        text-align: center;
+        font-size: 18px;
+        font-weight: 600;
+        margin-top: 15px;
+        margin-bottom: 15px;
+        padding: 18px;
+        background: #f8f9fa;
+        border-radius: 10px;
+    }
 
 
-        /* -------------------------------------------------- */
-        /* Заголовок карусели */
-        /* -------------------------------------------------- */
+    /* ====================================================== */
+    /* Таймер карусели */
+    /* ====================================================== */
 
-        .carousel-title {
-            text-align: center;
-            font-size: 24px;
-            font-weight: 700;
-            margin-top: 5px;
-            margin-bottom: 10px;
-        }
-
-
-        /* -------------------------------------------------- */
-        /* Номер и название отчета */
-        /* -------------------------------------------------- */
-
-        .carousel-counter {
-            text-align: center;
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 15px;
-        }
+    .carousel-timer {
+        text-align: center;
+        font-size: 14px;
+        margin-bottom: 15px;
+        padding: 18px;
+        background: #f8f9fa;
+        border-radius: 10px;
+    }
 
 
-        /* -------------------------------------------------- */
-        /* Таймер карусели */
-        /* -------------------------------------------------- */
+    /* ====================================================== */
+    /* Таймер обновления */
+    /* ====================================================== */
 
-        .carousel-timer {
-            text-align: center;
-            font-size: 14px;
-            margin-bottom: 15px;
-        }
-
-
-        /* -------------------------------------------------- */
-        /* Таймер обновления данных */
-        /* -------------------------------------------------- */
-
-        .refresh-timer {
-            font-size: 16px;
-            font-weight: 600;
-            margin-top: 5px;
-            margin-bottom: 10px;
-        }
-
-        .refresh-countdown {
-            font-size: 18px;
-            font-weight: 700;
-        }
+    .refresh-timer {
+        font-size: 16px;
+        font-weight: 600;
+        margin-top: 5px;
+        margin-bottom: 10px;
+    }
 
 
-        /* -------------------------------------------------- */
-        /* Кнопки навигации */
-        /* -------------------------------------------------- */
+    .refresh-countdown {
+        font-size: 18px;
+        font-weight: 700;
+    }
 
-        div.stButton > button {
-            width: 100%;
-        }
 
-    </style>
-    """,
+    /* ====================================================== */
+    /* Кнопки */
+    /* ====================================================== */
+
+    div.stButton > button {
+        width: 100%;
+    }
+
+</style>
+""",
     unsafe_allow_html=True
 )
 
 
 # ============================================================
-# ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ
+# ПОДКЛЮЧЕНИЕ К БАЗЕ
 # ============================================================
 
 engine = Config.get_engine()
 
 
 # ============================================================
-# ФУНКЦИЯ ЗАГРУЗКИ ДАННЫХ
+# ЗАГРУЗКА ДАННЫХ
 # ============================================================
 
-@st.cache_data(ttl=10)
+@st.cache_data
 def load_data(query_name, params=None):
 
     try:
@@ -213,7 +185,9 @@ def load_data(query_name, params=None):
         query = AUTO_REFRESH_OUT.get(query_name)
 
         if query is None:
+
             return pd.DataFrame()
+
 
         # ----------------------------------------------------
         # Запрос с параметрами
@@ -238,19 +212,22 @@ def load_data(query_name, params=None):
                 engine
             )
 
+
         return df
+
 
     except Exception as e:
 
         st.error(
-            f"Ошибка загрузки отчета '{query_name}': {str(e)}"
+            f"Ошибка загрузки отчета "
+            f"'{query_name}': {str(e)}"
         )
 
         return pd.DataFrame()
 
 
 # ============================================================
-# ОТОБРАЖЕНИЕ ОДНОГО ОТЧЕТА
+# ОТОБРАЖЕНИЕ ОТЧЕТА
 # ============================================================
 
 def show_report(report_name):
@@ -263,7 +240,7 @@ def show_report(report_name):
 
 
     # --------------------------------------------------------
-    # Если данных нет
+    # Нет данных
     # --------------------------------------------------------
 
     if df.empty:
@@ -286,29 +263,53 @@ def show_report(report_name):
     )
 
 
-    # --------------------------------------------------------
-    # Определяем числовые колонки
-    # --------------------------------------------------------
-
-    numeric_cols = df.select_dtypes(
-        include=["number"]
-    ).columns
-
-
 # ============================================================
 # SIDEBAR
 # ============================================================
 
 with st.sidebar:
 
+    # ========================================================
+    # РУЧНОЕ ОБНОВЛЕНИЕ
+    # ========================================================
+
+    if st.button(
+        "🔄 Обновить данные",
+        use_container_width=True
+    ):
+
+        now = datetime.now()
+
+
+        # ----------------------------------------------------
+        # Очищаем кэш
+        # ----------------------------------------------------
+
+        load_data.clear()
+
+
+        # ----------------------------------------------------
+        # Перезапускаем таймер
+        # ----------------------------------------------------
+
+        st.session_state.next_refresh_time = (
+            now.timestamp()
+            + REFRESH_INTERVAL
+        )
+
+
+        st.rerun()
+
+
     st.header("⚙️ Настройки")
 
 
     # ========================================================
-    # АВТООБНОВЛЕНИЕ ДАННЫХ
+    # АВТООБНОВЛЕНИЕ
     # ========================================================
 
     st.subheader("🔄 Обновление данных")
+
 
     auto_refresh = st.checkbox(
         "Включить автообновление (2 мин.)",
@@ -317,7 +318,7 @@ with st.sidebar:
 
 
     # --------------------------------------------------------
-    # Изменилось состояние автообновления
+    # Изменилось состояние
     # --------------------------------------------------------
 
     if auto_refresh != st.session_state.auto_refresh_enabled:
@@ -333,8 +334,6 @@ with st.sidebar:
 
         if auto_refresh:
 
-            st.session_state.last_refresh_time = now
-
             st.session_state.next_refresh_time = (
                 now.timestamp()
                 + REFRESH_INTERVAL
@@ -347,68 +346,23 @@ with st.sidebar:
 
         else:
 
+            # Никакого обновления данных здесь нет.
+            # Просто отключаем автоматический цикл.
+
             st.session_state.next_refresh_time = (
                 now.timestamp()
             )
 
 
-        # ----------------------------------------------------
-        # Очищаем кэш
-        # ----------------------------------------------------
-
-        load_data.clear()
-
         st.rerun()
 
 
     # ========================================================
-    # РУЧНОЕ ОБНОВЛЕНИЕ
-    # ========================================================
-
-    if st.button(
-        "🔄 Обновить сейчас",
-        use_container_width=True
-    ):
-
-        now = datetime.now()
-
-
-        # ----------------------------------------------------
-        # Фиксируем время обновления
-        # ----------------------------------------------------
-
-        st.session_state.last_refresh_time = now
-
-
-        # ----------------------------------------------------
-        # Запускаем таймер заново
-        # ----------------------------------------------------
-
-        st.session_state.next_refresh_time = (
-            now.timestamp()
-            + REFRESH_INTERVAL
-        )
-
-
-        # ----------------------------------------------------
-        # Очищаем кэш
-        # ----------------------------------------------------
-
-        load_data.clear()
-
-        st.rerun()
-
-
-    # ========================================================
-    # НАСТРОЙКИ КАРУСЕЛИ
+    # КАРУСЕЛЬ
     # ========================================================
 
     st.subheader("🎞️ Карусель отчетов")
 
-
-    # --------------------------------------------------------
-    # Включение / выключение автопрокрутки
-    # --------------------------------------------------------
 
     carousel_enabled = st.checkbox(
         f"Автопереключение ({CAROUSEL_INTERVAL} сек.)",
@@ -417,7 +371,7 @@ with st.sidebar:
 
 
     # --------------------------------------------------------
-    # Если изменили состояние
+    # Изменилось состояние карусели
     # --------------------------------------------------------
 
     if carousel_enabled != st.session_state.carousel_enabled:
@@ -431,8 +385,9 @@ with st.sidebar:
 
         st.rerun()
 
+
 # ============================================================
-# ПРОВЕРКА НАЛИЧИЯ ОТЧЕТОВ
+# ПРОВЕРКА ОТЧЕТОВ
 # ============================================================
 
 if not AUTO_REFRESH_OUT:
@@ -445,7 +400,7 @@ if not AUTO_REFRESH_OUT:
 
 
 # ============================================================
-# ПОЛУЧАЕМ СПИСОК ОТЧЕТОВ
+# СПИСОК ОТЧЕТОВ
 # ============================================================
 
 report_names = list(
@@ -466,9 +421,24 @@ if st.session_state.current_report >= report_count:
 
 # ============================================================
 # FRAGMENT
+#
+# ВАЖНО:
+#
+# Если автообновление выключено:
+# fragment НЕ перезапускается каждую секунду.
+#
+# Если включено:
+# fragment работает каждую секунду.
 # ============================================================
 
-@st.fragment(run_every=1)
+@st.fragment(
+    run_every=(
+        1
+        if st.session_state.auto_refresh_enabled
+        or st.session_state.carousel_enabled
+        else None
+    )
+)
 def reports_page():
 
     now = datetime.now()
@@ -477,6 +447,9 @@ def reports_page():
     # ========================================================
     # АВТООБНОВЛЕНИЕ ДАННЫХ
     # ========================================================
+
+    seconds_left_refresh = 0
+
 
     if st.session_state.auto_refresh_enabled:
 
@@ -500,19 +473,11 @@ def reports_page():
 
 
             # -----------------------------------------------
-            # Фиксируем время обновления
+            # Фиксируем следующее обновление
             # -----------------------------------------------
 
             refresh_time = datetime.now()
 
-            st.session_state.last_refresh_time = (
-                refresh_time
-            )
-
-
-            # -----------------------------------------------
-            # Запускаем новый цикл
-            # -----------------------------------------------
 
             st.session_state.next_refresh_time = (
                 refresh_time.timestamp()
@@ -529,14 +494,12 @@ def reports_page():
         )
 
 
-    else:
-
-        seconds_left_refresh = 0
-
-
     # ========================================================
     # АВТОПЕРЕКЛЮЧЕНИЕ КАРУСЕЛИ
     # ========================================================
+
+    seconds_left_carousel = 0
+
 
     if (
         st.session_state.carousel_enabled
@@ -561,7 +524,7 @@ def reports_page():
 
 
             # -----------------------------------------------
-            # Запускаем таймер заново
+            # Перезапускаем таймер карусели
             # -----------------------------------------------
 
             st.session_state.next_carousel_time = (
@@ -578,20 +541,6 @@ def reports_page():
             seconds_left_carousel
         )
 
-    else:
-
-        seconds_left_carousel = 0
-
-    # ========================================================
-    # ВРЕМЯ ОБНОВЛЕНИЯ ДАННЫХ
-    # ========================================================
-
-
-    st.caption(
-        "Последнее обновление: "
-        f"{st.session_state.last_refresh_time.strftime('%Y-%m-%d %H:%M:%S')}"
-    )
-
 
     # ========================================================
     # ТАЙМЕР ОБНОВЛЕНИЯ ДАННЫХ
@@ -601,21 +550,22 @@ def reports_page():
 
         st.markdown(
             f"""
-            <div class="refresh-timer">
-                🔄 Следующее обновление через:
-                <span class="refresh-countdown">
-                    {seconds_left_refresh} сек.
-                </span>
-            </div>
-            """,
+<div class="refresh-timer">
+    🔄 Следующее обновление через:
+    <span class="refresh-countdown">
+        {seconds_left_refresh} сек.
+    </span>
+</div>
+""",
             unsafe_allow_html=True
         )
 
     else:
 
         st.info(
-            "⏸️ Автообновление выключено",
+            "⏸️ Автообновление выключено"
         )
+
 
     # ========================================================
     # ТЕКУЩИЙ ОТЧЕТ
@@ -625,9 +575,11 @@ def reports_page():
         st.session_state.current_report
     )
 
+
     current_report_name = (
         report_names[current_index]
     )
+
 
     # ========================================================
     # НОМЕР + НАЗВАНИЕ ОТЧЕТА
@@ -635,33 +587,33 @@ def reports_page():
 
     st.markdown(
         f"""
-        <div class="carousel-counter">
-            Отчет {current_index + 1} / {report_count}
-            — {current_report_name}
-        </div>
-        """,
+<div class="carousel-counter">
+    Отчет {current_index + 1} / {report_count}
+    — {current_report_name}
+</div>
+""",
         unsafe_allow_html=True
     )
 
 
-    # ========================================================
-    # ТАЙМЕР КАРУСЕЛИ
-    # ========================================================
+#     # ========================================================
+#     # ТАЙМЕР КАРУСЕЛИ
+#     # ========================================================
 
-    if (
-        st.session_state.carousel_enabled
-        and report_count > 1
-    ):
+#     if (
+#         st.session_state.carousel_enabled
+#         and report_count > 1
+#     ):
 
-        st.markdown(
-            f"""
-            <div class="carousel-timer">
-                Следующий отчет через:
-                <b>{seconds_left_carousel} сек.</b>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+#         st.markdown(
+#             f"""
+# <div class="carousel-timer">
+#     Следующий отчет через:
+#     <b>{seconds_left_carousel} сек.</b>
+# </div>
+# """,
+#             unsafe_allow_html=True
+#         )
 
 
     # ========================================================
@@ -694,8 +646,6 @@ def reports_page():
                 + CAROUSEL_INTERVAL
             )
 
-            st.rerun(scope="fragment")
-
 
     # --------------------------------------------------------
     # ЦЕНТР
@@ -727,8 +677,6 @@ def reports_page():
                 + CAROUSEL_INTERVAL
             )
 
-            st.rerun(scope="fragment")
-
 
     # ========================================================
     # ОТЧЕТ
@@ -737,9 +685,6 @@ def reports_page():
     show_report(
         current_report_name
     )
-
-
-
 
 
 # ============================================================
