@@ -176,38 +176,41 @@ AUTO_REFRESH_CLIENTS = {
 
     'Выдача клиенту': """
 select
+	hd.isreadyforshipment,
 	d.deliverynumber as "Номер заявки",
 	d.debtorpartnername as "Грузополучатель",
 	d.extrafield3 as "Заказ клиента",
-	d.deliverydate::date as "Дата отгрузки",
-	COUNT(td.material_id) as "Арт. всего",
-	COUNT(*) filter (
+	(COUNT(*) filter (
 where
-	td.sys_pickedbasequantity is null) as "Осталось арт.",
-	case
-	when COUNT(td.material_id) = COUNT(td.sys_pickedbasequantity)
-	then 'Да' 
-	else 'Нет'
-	end as "Собран"
+	td.sys_pickedbasequantity is not null)*100/COUNT(td.material_id)) || '%%' as "Процент",
+    case
+	when hd.isreadyforshipment = '1'
+	then 'Готов к выдаче' 
+	when (COUNT(*) filter (
+where
+	td.sys_pickedbasequantity is not null)/COUNT(td.material_id)) = '1'
+	then 'Упаковывается'
+	else 'Собирается'
+	end as "Статус"
 from
 	hdr_deliveryrequest as d
 join tbl_deliveryrequestmaterials as td on
 	td.transaction_id = d.transaction_id
---Проверка на вычерки и тип поставки
+join hdr_delivery as hd on
+	hd.purchasenumber = d.deliverynumber
+--Проверки
 where  td.shortagereason_id is null
 and d.deliverytype_id = 7
 and d.deliverysubtype_id = '109'
-and d.deliverydate::date >= CURRENT_DATE
-and d.deliverydate::date <= CURRENT_DATE+1
+and hd.taskpriority = '5000'
+and d.transportnumber is null
+and d.deliverydate::date >= CURRENT_DATE-10
 group by 	
+	hd.isreadyforshipment,
 	d.deliverynumber,
 	d.debtorpartnername,
-	d.extrafield3,
-	d.deliverydate
-order by 
-"Собран" desc,
-d.deliverydate desc,
-d.deliverynumber
+	d.extrafield3
+order by d.deliverynumber 
     """
 
 }
