@@ -195,6 +195,31 @@ order by
             d.extrafield3,
             hd.readydate::date
         ORDER BY d.deliverynumber
+    """,
+
+	    'Операции по ресурсам': """
+        select
+	d.shipmentdate::date as "Дата отгрузки",
+	p.nameru as "Производственный ресурс",
+	count(hm.tid) as "Количество заданий"
+from hdr_materialpicking as hm
+join waves as w
+	on hm.wave_id = w.tid
+join wavetypes as wt
+	on w.wavetype_id = wt.tid
+join productionresourcegroups as p
+	on wt.productionresourcegroup_id = p.tid
+join tbl_deliveryrequestmaterials as td on
+	hm.row_id = td.tid
+join hdr_delivery as d on
+	td.deliverytransaction_id = d.transaction_id
+where 
+	hm.taskdate is null 
+	and td.shortagereason_id is null
+group by 
+	d.shipmentdate::date,
+	p.nameru
+order by d.shipmentdate::date, p.nameru
     """
 
 }
