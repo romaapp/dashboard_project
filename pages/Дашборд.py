@@ -115,9 +115,11 @@ st.markdown(
         margin-top: 15px;
         margin-bottom: 15px;
         padding: 18px;
-        background: #f8f9fa;
+        background: var(--secondary-background-color);
+        color: var(--text-color) !important;
         border-radius: 10px;
     }
+
 
 
     /* ====================================================== */
