@@ -1,30 +1,60 @@
-# stop_simple.ps1
-Write-Host "Останавливаю дашборд..." -ForegroundColor Yellow
+# stop_dashboard.ps1
+Write-Host "=== STOP DASHBOARD ===" -ForegroundColor Cyan
+Write-Host ""
 
-# Находим все python процессы
+# 1. Find process on port 8501
+Write-Host "Checking port 8501..." -ForegroundColor Yellow
+$portInfo = netstat -ano | findstr :8501
+
+if ($portInfo) {
+    Write-Host "Found process on port 8501:" -ForegroundColor Green
+    Write-Host $portInfo -ForegroundColor Gray
+    
+    # Extract PID (используем другую переменную, не $pid)
+    $pidMatch = [regex]::Match($portInfo, '(\d+)$')
+    if ($pidMatch.Success) {
+        $processId = $pidMatch.Groups[1].Value  # ← Используем $processId вместо $pid
+        Write-Host "Stopping PID: $processId" -ForegroundColor Yellow
+        Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+        Write-Host "Process stopped!" -ForegroundColor Green
+    }
+} else {
+    Write-Host "No process found on port 8501" -ForegroundColor Yellow
+}
+
+# 2. Also check python processes with run_server.py
+Write-Host ""
+Write-Host "Checking python processes..." -ForegroundColor Yellow
 $procs = Get-Process -Name python -ErrorAction SilentlyContinue
 
 if ($procs) {
     foreach ($p in $procs) {
         try {
-            # Проверяем командную строку
             $cmd = (Get-CimInstance Win32_Process -Filter "ProcessId = $($p.Id)").CommandLine
             if ($cmd -like "*run_server.py*") {
-                Write-Host "Останавливаю PID: $($p.Id)" -ForegroundColor Green
+                Write-Host "Stopping python process PID: $($p.Id)" -ForegroundColor Yellow
                 Stop-Process -Id $p.Id -Force
+                Write-Host "Python process stopped!" -ForegroundColor Green
             }
         } catch {
-            Write-Host "Ошибка: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
         }
     }
 } else {
-    Write-Host "Процессов python не найдено" -ForegroundColor Yellow
+    Write-Host "No python processes found" -ForegroundColor Yellow
 }
 
-# Проверяем порт 8501
-$portCheck = netstat -ano | findstr :8501
-if ($portCheck) {
-    Write-Host "Порт 8501 все еще занят. Проверьте вручную." -ForegroundColor Red
+# 3. Check result
+Write-Host ""
+Write-Host "Checking port 8501 again..." -ForegroundColor Yellow
+$checkPort = netstat -ano | findstr :8501
+if ($checkPort) {
+    Write-Host "Port 8501 is still busy!" -ForegroundColor Red
+    Write-Host $checkPort -ForegroundColor Gray
 } else {
-    Write-Host "Дашборд остановлен!" -ForegroundColor Green
+    Write-Host "Port 8501 is free!" -ForegroundColor Green
 }
+
+Write-Host ""
+Write-Host "=== DONE ===" -ForegroundColor Cyan
+Read-Host "Press Enter to exit"
