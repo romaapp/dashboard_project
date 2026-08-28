@@ -47,7 +47,7 @@ group by d.deliverysubtype
     """,
     
     'Статистика по отобранным и неотобранным артикулам': """
-        with mh as (
+with mh as (
 	select count(hm.material_id) as x,
 	count(distinct hm.material_id) as y
 	from hdr_materialpicking hm
@@ -59,25 +59,27 @@ select
 	COUNT(*) filter (
 where
 	td.sys_pickedbasequantity is null
-	and d.shipmentdate::date = CURRENT_DATE) as "Осталось арт. на сегодня",
+	and d.deliverydate::date = CURRENT_DATE) as "Осталось арт. на сегодня",
 	COUNT(*) filter (
 where
 	td.sys_pickedbasequantity is null
-	and d.shipmentdate::date = CURRENT_DATE+1) as "Осталось арт. на завтра",
+	and d.deliverydate::date = CURRENT_DATE+1) as "Осталось арт. на завтра",
 	COUNT(*) filter (
 where
 	td.sys_pickedbasequantity is null
-	and d.shipmentdate::date = CURRENT_DATE+2) as "Осталось арт. на послезавтра",
+	and d.deliverydate::date = CURRENT_DATE+2) as "Осталось арт. на послезавтра",
 	COUNT(td.material_id) filter (
 where
-	td.sys_pickedbasequantity is null and d.shipmentdate::date >= CURRENT_DATE) as "Неотобранных арт. всего"
+	td.sys_pickedbasequantity is null and d.deliverydate::date >= CURRENT_DATE) as "Неотобранных арт. всего"
 from
-	hdr_delivery d
+	hdr_deliveryrequest d
 join tbl_deliveryrequestmaterials as td on
-	td.deliverytransaction_id = d.transaction_id
+	td.transaction_id = d.transaction_id
 	cross join mh
---Проверка на вычерки
+-- Проверка на вычерки
 where  td.shortagereason_id is null
+and d.deliverytype_id = 7
+and d.deliverysubtype is not null
 group by mh.x, mh.y
     """,
 
@@ -244,7 +246,7 @@ group by d.deliverysubtype
     """,
 
     'Статистика по отобранным и неотобранным артикулам': """
-        with mh as (
+with mh as (
 	select count(hm.material_id) as x,
 	count(distinct hm.material_id) as y
 	from hdr_materialpicking hm
@@ -256,25 +258,27 @@ select
 	COUNT(*) filter (
 where
 	td.sys_pickedbasequantity is null
-	and d.shipmentdate::date = CURRENT_DATE) as "Осталось арт. на сегодня",
+	and d.deliverydate::date = CURRENT_DATE) as "Осталось арт. на сегодня",
 	COUNT(*) filter (
 where
 	td.sys_pickedbasequantity is null
-	and d.shipmentdate::date = CURRENT_DATE+1) as "Осталось арт. на завтра",
+	and d.deliverydate::date = CURRENT_DATE+1) as "Осталось арт. на завтра",
 	COUNT(*) filter (
 where
 	td.sys_pickedbasequantity is null
-	and d.shipmentdate::date = CURRENT_DATE+2) as "Осталось арт. на послезавтра",
+	and d.deliverydate::date = CURRENT_DATE+2) as "Осталось арт. на послезавтра",
 	COUNT(td.material_id) filter (
 where
-	td.sys_pickedbasequantity is null and d.shipmentdate::date >= CURRENT_DATE) as "Неотобранных арт. всего"
+	td.sys_pickedbasequantity is null and d.deliverydate::date >= CURRENT_DATE) as "Неотобранных арт. всего"
 from
-	hdr_delivery d
+	hdr_deliveryrequest d
 join tbl_deliveryrequestmaterials as td on
-	td.deliverytransaction_id = d.transaction_id
+	td.transaction_id = d.transaction_id
 	cross join mh
---Проверка на вычерки
+-- Проверка на вычерки
 where  td.shortagereason_id is null
+and d.deliverytype_id = 7
+and d.deliverysubtype is not null
 group by mh.x, mh.y
     """
 
