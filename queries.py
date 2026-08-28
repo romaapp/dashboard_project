@@ -167,6 +167,34 @@ order by
 	    hm.targetlocationname
         order by 
 	    hm.targetlocationname
+    """,
+
+	    'Выданные клиентам заказы': """
+        SELECT
+            hd.readydate::date as "Дата готовности отгрузки",
+            d.deliverynumber as "Номер заявки",
+            d.debtorpartnername as "Грузополучатель",
+            d.extrafield3 as "Заказ клиента",
+            count(*) filter(where td.sys_pickedbasequantity is not null) as "К-во арт."
+        FROM
+            hdr_deliveryrequest as d
+        JOIN tbl_deliveryrequestmaterials as td ON
+            td.transaction_id = d.transaction_id
+        JOIN hdr_delivery as hd ON
+            hd.purchasenumber = d.deliverynumber
+        WHERE  
+            td.shortagereason_id is null
+            AND d.deliverytype_id = 7
+            AND d.deliverysubtype_id = '109'
+            AND d.transportnumber is not null
+            AND hd.isreadyforshipment = '1'
+            AND hd.readydate::date = %s
+        GROUP BY 	
+            d.deliverynumber,
+            d.debtorpartnername,
+            d.extrafield3,
+            hd.readydate::date
+        ORDER BY d.deliverynumber
     """
 
 }

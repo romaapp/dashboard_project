@@ -368,9 +368,10 @@ def display_parameterized_report(
 
     if params:
 
-        st.caption(
-            f"🔍 Параметры запроса: {params}"
-        )
+        if isinstance(params, tuple) and len(params) == 1:
+            st.caption(f"🔍 Параметры запроса: {params[0]}")
+        else:
+            st.caption(f"🔍 Параметры запроса: {params}")
 
     if filter_value:
 
@@ -740,6 +741,19 @@ with st.sidebar:
         st.divider()
 
 
+    # === ДАТА ДЛЯ ОТЧЕТОВ С ДАТАМИ ===
+    date_reports = ['Выданные клиентам заказы']
+    selected_date = None
+    if any(report in date_reports for report in selected_reports):
+        st.subheader("📅 Параметры даты")
+        selected_date = st.date_input(
+            "Выберите дату для отчета 'Выданные клиентам заказы':",
+            value=datetime.now().date(),
+            help="Выберите дату, за которую показать выданные заказы"
+        )
+        st.divider()
+
+
     # ========================================================
     # ФИЛЬТРЫ ДЛЯ ОТЧЕТОВ
     # ========================================================
@@ -1100,6 +1114,20 @@ else:
                 report_name,
                 params
             )
+
+
+        # === ОБРАБОТКА ОТЧЕТА С ДАТОЙ ===
+        elif report_name == 'Выданные клиентам заказы':
+            if not selected_date:
+                if use_columns:
+                    with cols[idx % 2]:
+                        st.warning(f"⚠️ Для отчета '{report_name}' выберите дату в боковой панели")
+                else:
+                    st.warning(f"⚠️ Для отчета '{report_name}' выберите дату в боковой панели")
+                continue
+            # Передаем дату как параметр в формате YYYY-MM-DD
+            params = (selected_date.strftime('%Y-%m-%d'),)
+            df = load_data(report_name, params)
 
 
         # ====================================================
