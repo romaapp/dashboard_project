@@ -167,6 +167,59 @@ order by
 	    hm.targetlocationname
         order by 
 	    hm.targetlocationname
+    """,
+
+	    'Выданные клиентам заказы': """
+        SELECT
+            hd.readydate::date as "Дата готовности отгрузки",
+            d.deliverynumber as "Номер заявки",
+            d.debtorpartnername as "Грузополучатель",
+            d.extrafield3 as "Заказ клиента",
+            count(*) filter(where td.sys_pickedbasequantity is not null) as "К-во арт."
+        FROM
+            hdr_deliveryrequest as d
+        JOIN tbl_deliveryrequestmaterials as td ON
+            td.transaction_id = d.transaction_id
+        JOIN hdr_delivery as hd ON
+            hd.purchasenumber = d.deliverynumber
+        WHERE  
+            td.shortagereason_id is null
+            AND d.deliverytype_id = 7
+            AND d.deliverysubtype_id = '109'
+            AND d.transportnumber is not null
+            AND hd.isreadyforshipment = '1'
+            AND hd.readydate::date = %s
+        GROUP BY 	
+            d.deliverynumber,
+            d.debtorpartnername,
+            d.extrafield3,
+            hd.readydate::date
+        ORDER BY d.deliverynumber
+    """,
+
+	    'Операции по ресурсам': """
+        select
+	d.shipmentdate::date as "Дата отгрузки",
+	p.nameru as "Производственный ресурс",
+	count(hm.tid) as "Количество заданий"
+from hdr_materialpicking as hm
+join waves as w
+	on hm.wave_id = w.tid
+join wavetypes as wt
+	on w.wavetype_id = wt.tid
+join productionresourcegroups as p
+	on wt.productionresourcegroup_id = p.tid
+join tbl_deliveryrequestmaterials as td on
+	hm.row_id = td.tid
+join hdr_delivery as d on
+	td.deliverytransaction_id = d.transaction_id
+where 
+	hm.taskdate is null 
+	and td.shortagereason_id is null
+group by 
+	d.shipmentdate::date,
+	p.nameru
+order by d.shipmentdate::date, p.nameru
     """
 
 }
