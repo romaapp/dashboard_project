@@ -2,3 +2,7 @@
 __pycache__/
 logs/
 dashboard_logs.db
+logs/
+*.log
+*.db
+*.sqlite3
