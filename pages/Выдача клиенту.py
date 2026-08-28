@@ -243,7 +243,7 @@ with st.sidebar:
     st.subheader("🔄 Автообновление")
 
     auto_refresh = st.checkbox(
-        "Включить автообновление (2 мин.)",
+        "Включить автообновление (20 сек.)",
         value=st.session_state.auto_refresh_enabled
     )
 
