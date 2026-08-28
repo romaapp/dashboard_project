@@ -176,7 +176,6 @@ AUTO_REFRESH_CLIENTS = {
 
     'Выдача клиенту': """
 select
-	hd.isreadyforshipment,
 	d.deliverynumber as "Номер заявки",
 	d.debtorpartnername as "Грузополучатель",
 	d.extrafield3 as "Заказ клиента",
@@ -206,7 +205,6 @@ and hd.taskpriority = '5000'
 and d.transportnumber is null
 and d.deliverydate::date >= CURRENT_DATE-10
 group by 	
-	hd.isreadyforshipment,
 	d.deliverynumber,
 	d.debtorpartnername,
 	d.extrafield3

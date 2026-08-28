@@ -2,57 +2,88 @@
 Write-Host "=== STOP DASHBOARD ===" -ForegroundColor Cyan
 Write-Host ""
 
-# 1. Find process on port 8501
-Write-Host "Checking port 8501..." -ForegroundColor Yellow
-$portInfo = netstat -ano | findstr :8501
+# Способ 1: Найти процесс на порту 8501 через netstat
+Write-Host "Method 1: Finding process by port 8501..." -ForegroundColor Yellow
+$portInfo = netstat -ano | findstr :8501 | findstr LISTENING
 
 if ($portInfo) {
-    Write-Host "Found process on port 8501:" -ForegroundColor Green
+    Write-Host "Found:" -ForegroundColor Green
     Write-Host $portInfo -ForegroundColor Gray
     
-    # Extract PID (используем другую переменную, не $pid)
-    $pidMatch = [regex]::Match($portInfo, '(\d+)$')
-    if ($pidMatch.Success) {
-        $processId = $pidMatch.Groups[1].Value  # ← Используем $processId вместо $pid
+    # Извлекаем PID (последнее число в строке)
+    $parts = $portInfo -split '\s+'
+    $processId = $parts[-1]
+    
+    if ($processId -match '^\d+$') {
         Write-Host "Stopping PID: $processId" -ForegroundColor Yellow
-        Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
-        Write-Host "Process stopped!" -ForegroundColor Green
+        taskkill /PID $processId /F
+        Write-Host "Process killed!" -ForegroundColor Green
     }
 } else {
-    Write-Host "No process found on port 8501" -ForegroundColor Yellow
+    Write-Host "No process found listening on port 8501" -ForegroundColor Yellow
 }
 
-# 2. Also check python processes with run_server.py
+# Способ 2: Найти все python процессы с run_server.py
 Write-Host ""
-Write-Host "Checking python processes..." -ForegroundColor Yellow
-$procs = Get-Process -Name python -ErrorAction SilentlyContinue
+Write-Host "Method 2: Finding python processes with run_server.py..." -ForegroundColor Yellow
 
-if ($procs) {
-    foreach ($p in $procs) {
-        try {
-            $cmd = (Get-CimInstance Win32_Process -Filter "ProcessId = $($p.Id)").CommandLine
-            if ($cmd -like "*run_server.py*") {
-                Write-Host "Stopping python process PID: $($p.Id)" -ForegroundColor Yellow
-                Stop-Process -Id $p.Id -Force
-                Write-Host "Python process stopped!" -ForegroundColor Green
-            }
-        } catch {
-            Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+# Получаем список всех python процессов
+$pythonProcesses = Get-WmiObject Win32_Process | Where-Object { $_.Name -eq "python.exe" }
+
+if ($pythonProcesses) {
+    $found = $false
+    foreach ($proc in $pythonProcesses) {
+        if ($proc.CommandLine -like "*run_server.py*") {
+            Write-Host "Found python process with run_server.py" -ForegroundColor Green
+            Write-Host "  PID: $($proc.ProcessId)" -ForegroundColor Gray
+            Write-Host "  Command: $($proc.CommandLine)" -ForegroundColor Gray
+            Write-Host "Stopping..." -ForegroundColor Yellow
+            Stop-Process -Id $proc.ProcessId -Force
+            Write-Host "Process stopped!" -ForegroundColor Green
+            $found = $true
         }
+    }
+    if (-not $found) {
+        Write-Host "No python processes with run_server.py found" -ForegroundColor Yellow
     }
 } else {
     Write-Host "No python processes found" -ForegroundColor Yellow
 }
 
-# 3. Check result
+# Способ 3: Найти все процессы на порту 8501 (включая ESTABLISHED)
 Write-Host ""
-Write-Host "Checking port 8501 again..." -ForegroundColor Yellow
+Write-Host "Method 3: Killing all processes on port 8501..." -ForegroundColor Yellow
+$allPortInfo = netstat -ano | findstr :8501
+
+if ($allPortInfo) {
+    $pids = $allPortInfo | ForEach-Object {
+        $parts = $_ -split '\s+'
+        $pid = $parts[-1]
+        if ($pid -match '^\d+$') {
+            $pid
+        }
+    } | Select-Object -Unique
+    
+    foreach ($pid in $pids) {
+        if ($pid -ne "0") {
+            Write-Host "Killing PID: $pid" -ForegroundColor Yellow
+            taskkill /PID $pid /F 2>$null
+        }
+    }
+    Write-Host "All processes on port 8501 killed!" -ForegroundColor Green
+} else {
+    Write-Host "No processes found on port 8501" -ForegroundColor Yellow
+}
+
+# Проверка результата
+Write-Host ""
+Write-Host "Checking result..." -ForegroundColor Yellow
 $checkPort = netstat -ano | findstr :8501
 if ($checkPort) {
     Write-Host "Port 8501 is still busy!" -ForegroundColor Red
     Write-Host $checkPort -ForegroundColor Gray
 } else {
-    Write-Host "Port 8501 is free!" -ForegroundColor Green
+    Write-Host "Port 8501 is FREE!" -ForegroundColor Green
 }
 
 Write-Host ""
