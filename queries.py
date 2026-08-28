@@ -207,7 +207,8 @@ and d.deliverydate::date >= CURRENT_DATE-10
 group by 	
 	d.deliverynumber,
 	d.debtorpartnername,
-	d.extrafield3
+	d.extrafield3,
+	hd.isreadyforshipment
 order by d.deliverynumber 
     """
 
