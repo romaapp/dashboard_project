@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from io import BytesIO
 from datetime import datetime
 from config import Config
 from queries import SQL_QUERIES
@@ -29,6 +30,13 @@ st.set_page_config(
 if 'session_id' not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 
+if 'visit_logged' not in st.session_state:
+    st.session_state.visit_logged = False
+
+if not st.session_state.visit_logged:
+    logger.log_action('visit')
+    st.session_state.visit_logged = True
+
 
 # ============================================================
 # ИНИЦИАЛИЗАЦИЯ ДЛЯ ВЫБРАННЫХ ОТЧЕТОВ
@@ -39,18 +47,19 @@ if 'selected_reports' not in st.session_state:
 
 
 # ============================================================
+# ИНИЦИАЛИЗАЦИЯ ДЛЯ ЛОГИРОВАНИЯ ЗАПУЩЕННЫХ ОТЧЕТОВ
+# ============================================================
+
+if 'logged_reports' not in st.session_state:
+    st.session_state.logged_reports = set()
+
+
+# ============================================================
 # ИНИЦИАЛИЗАЦИЯ ДЛЯ ЗАПУСКА ОТЧЕТА ИЗ ПЛИТКИ
 # ============================================================
 
 if 'tile_report' not in st.session_state:
     st.session_state.tile_report = None
-
-
-# ============================================================
-# ЛОГИРОВАНИЕ ВИЗИТА
-# ============================================================
-
-logger.log_action('visit')
 
 
 # ============================================================
@@ -129,68 +138,36 @@ def get_top_reports(limit=5):
 # CSS ДЛЯ УПРАВЛЕНИЯ ШИРИНОЙ
 # ============================================================
 
-def apply_width_settings(mode):
-    """Применяет настройки ширины"""
+def apply_width_settings():
+    """Применяет настройки ширины страницы"""
 
-    if mode == "Узкая":
+    css = """
+    <style>
 
-        css = """
-        <style>
+        .main > div {
+            max-width: 100% !important;
+            padding-left: 2rem !important;
+            padding-right: 2rem !important;
+        }
 
-            .main > div {
-                max-width: 800px !important;
-                margin: 0 auto !important;
-                padding-left: 1rem !important;
-                padding-right: 1rem !important;
-            }
+        section.main > div {
+            max-width: 100% !important;
+        }
 
-        </style>
-        """
+        .stPlotlyChart {
+            width: 100% !important;
+        }
 
-    elif mode == "Стандартная":
+        .stDataFrame {
+            width: 100% !important;
+        }
 
-        css = """
-        <style>
+        .stDataFrame > div {
+            width: 100% !important;
+        }
 
-            .main > div {
-                max-width: 1200px !important;
-                margin: 0 auto !important;
-                padding-left: 2rem !important;
-                padding-right: 2rem !important;
-            }
-
-        </style>
-        """
-
-    else:
-
-        css = """
-        <style>
-
-            .main > div {
-                max-width: 100% !important;
-                padding-left: 2rem !important;
-                padding-right: 2rem !important;
-            }
-
-            section.main > div {
-                max-width: 100% !important;
-            }
-
-            .stPlotlyChart {
-                width: 100% !important;
-            }
-
-            .stDataFrame {
-                width: 100% !important;
-            }
-
-            .stDataFrame > div {
-                width: 100% !important;
-            }
-
-        </style>
-        """
+    </style>
+    """
 
     st.markdown(
         css,
@@ -198,153 +175,127 @@ def apply_width_settings(mode):
     )
 
 
+
+# ============================================================
+# ФУНКЦИЯ ДЛЯ ПРЕОБРАЗОВАНИЯ В EXCEL
+# ============================================================
+
+
+def dataframe_to_excel(df):
+    """Преобразует DataFrame в Excel-файл."""
+
+    output = BytesIO()
+
+    with pd.ExcelWriter(
+        output,
+        engine="openpyxl"
+    ) as writer:
+
+        df.to_excel(
+            writer,
+            index=False,
+            sheet_name="Данные"
+        )
+
+    output.seek(0)
+
+    return output.getvalue()
+
+
 # ============================================================
 # ФУНКЦИЯ ДЛЯ ОТОБРАЖЕНИЯ ОТЧЕТА
 # ============================================================
 
-def display_report(
-    df,
-    report_name,
-    show_charts,
-    show_data,
-    show_stats
-):
-    """Отображает один отчет с настройками"""
+# ============================================================
+# ФУНКЦИЯ ДЛЯ ПОИСКА
+# ============================================================
 
-    st.subheader(
-        report_name.replace('_', ' ').title()
+def filter_dataframe(df, key):
+    """Фильтрует строки таблицы и предоставляет кнопки очистки и скачивания."""
+
+    def clear_search():
+        st.session_state[key] = ""
+
+    col1, col2, col3 = st.columns([5, 1, 1])
+
+    with col1:
+
+        search_text = st.text_input(
+            "🔎 Поиск по таблице",
+            key=key,
+            placeholder="Введите значение для поиска..."
+        )
+
+    with col2:
+
+        st.markdown(
+            """
+            <div style="height: 28px;"></div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.button(
+            "✖ Очистить",
+            key=f"{key}_clear",
+            use_container_width=True,
+            on_click=clear_search
+        )
+
+    # ========================================================
+    # ФИЛЬТРАЦИЯ
+    # ========================================================
+
+    df_filtered = df
+
+    if search_text:
+
+        search_text = search_text.lower()
+
+        mask = df.astype(str).apply(
+            lambda column: column.str.lower().str.contains(
+                search_text,
+                na=False
+            )
+        ).any(axis=1)
+
+        df_filtered = df[mask]
+
+    # ========================================================
+    # ПОДГОТОВКА EXCEL
+    # ========================================================
+
+    excel_data = dataframe_to_excel(
+        df_filtered
     )
 
-    if len(df.columns) == 2:
+    # ========================================================
+    # КНОПКА СКАЧИВАНИЯ
+    # ========================================================
 
-        col1, col2 = df.columns[:2]
+    with col3:
 
-        if show_charts:
+        st.markdown(
+            """
+            <div style="height: 28px;"></div>
+            """,
+            unsafe_allow_html=True
+        )
 
-            try:
+        st.download_button(
+            "⇩ Скачать",
+            data=excel_data,
+            file_name=f"{key}.xlsx",
+            mime=(
+                "application/vnd.openxmlformats-"
+                "officedocument.spreadsheetml.sheet"
+            ),
+            key=f"download_{key}",
+            use_container_width=True,
+            help="Скачать таблицу в Excel"
+        )
 
-                if pd.api.types.is_datetime64_any_dtype(
-                    df[col1]
-                ):
-
-                    fig = px.line(
-                        df,
-                        x=col1,
-                        y=col2,
-                        title=f"{col2} по датам",
-                        template="plotly_white"
-                    )
-
-                else:
-
-                    fig = px.bar(
-                        df,
-                        x=col1,
-                        y=col2,
-                        title=f"{col2} по категориям",
-                        template="plotly_white"
-                    )
-
-                st.plotly_chart(
-                    fig,
-                    use_container_width=True
-                )
-
-            except Exception as e:
-
-                st.warning(
-                    f"Не удалось построить график: {str(e)}"
-                )
-
-        if show_data:
-
-            st.dataframe(
-                df,
-                use_container_width=True
-            )
-
-        if show_stats and len(df) > 0:
-
-            with st.expander(
-                "📈 Сводная статистика"
-            ):
-
-                try:
-
-                    st.dataframe(
-                        df.describe(),
-                        use_container_width=True
-                    )
-
-                except Exception:
-
-                    st.info(
-                        "Нет данных для статистики"
-                    )
-
-    else:
-
-        numeric_cols = df.select_dtypes(
-            include=['float64', 'int64']
-        ).columns
-
-        if show_charts and len(numeric_cols) > 0:
-
-            try:
-
-                fig = px.bar(
-                    df,
-                    x=df.columns[0],
-                    y=numeric_cols[0],
-                    title=(
-                        f"{numeric_cols[0]} "
-                        f"по {df.columns[0]}"
-                    ),
-                    template="plotly_white"
-                )
-
-                st.plotly_chart(
-                    fig,
-                    use_container_width=True
-                )
-
-            except Exception as e:
-
-                st.warning(
-                    f"Не удалось построить график: {str(e)}"
-                )
-
-        if show_data:
-
-            st.dataframe(
-                df,
-                use_container_width=True
-            )
-
-        if (
-            show_stats
-            and len(df) > 0
-            and len(numeric_cols) > 0
-        ):
-
-            with st.expander(
-                "📈 Сводная статистика"
-            ):
-
-                try:
-
-                    st.dataframe(
-                        df[numeric_cols].describe(),
-                        use_container_width=True
-                    )
-
-                except Exception:
-
-                    st.info(
-                        "Нет данных для статистики"
-                    )
-
-    st.divider()
+    return df_filtered
 
 
 # ============================================================
@@ -500,8 +451,13 @@ def display_parameterized_report(
 
         if show_data:
 
-            st.dataframe(
+            df_filtered = filter_dataframe(
                 df,
+                f"search_{report_name}"
+            )
+
+            st.dataframe(
+                df_filtered,
                 use_container_width=True
             )
 
@@ -528,14 +484,17 @@ def display_parameterized_report(
                         "Нет данных для статистики"
                     )
 
-    # st.divider()
-
 
 # ============================================================
 # ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ
 # ============================================================
 
-engine = Config.get_engine()
+@st.cache_resource
+def get_db_engine():    
+    return Config.get_engine()
+
+
+engine = get_db_engine()
 
 
 # ============================================================
@@ -591,39 +550,6 @@ def load_data(query_name, params=None):
         return pd.DataFrame()
 
 
-# ============================================================
-# ФУНКЦИЯ ЗАГРУЗКИ СПИСКА СОТРУДНИКОВ
-# ============================================================
-
-@st.cache_data
-def load_employees():
-    """Загружает список сотрудников из БД"""
-
-    try:
-
-        query = SQL_QUERIES.get(
-            'Список сотрудников'
-        )
-
-        if query:
-
-            df = pd.read_sql(
-                query,
-                engine
-            )
-
-            return df["Сотрудник"].tolist()
-
-        return []
-
-    except Exception as e:
-
-        st.error(
-            f"Ошибка загрузки списка сотрудников: {str(e)}"
-        )
-
-        return []
-
 
 # ============================================================
 # SIDEBAR
@@ -659,16 +585,10 @@ with st.sidebar:
         "📋 Выбор отчетов"
     )
 
-    service_queries = [
-        'Список сотрудников'
-    ]
+    service_queries = []
 
     parameterized_reports = [
         'Статусы заявок отгрузки'
-    ]
-
-    filter_reports = [
-        'Отборы сотрудников по волнам'
     ]
 
     all_reports = [
@@ -747,46 +667,10 @@ with st.sidebar:
     if any(report in date_reports for report in selected_reports):
         st.subheader("📅 Параметры даты")
         selected_date = st.date_input(
-            "Выберите дату для отчета 'Выданные клиентам заказы':",
+            "Выберите дату для отчета:",
             value=datetime.now().date(),
-            help="Выберите дату, за которую показать выданные заказы"
+            help="Выберите дату"
         )
-        st.divider()
-
-
-    # ========================================================
-    # ФИЛЬТРЫ ДЛЯ ОТЧЕТОВ
-    # ========================================================
-
-    selected_employee = None
-
-    if any(
-        report in filter_reports
-        for report in selected_reports
-    ):
-
-        st.subheader(
-            "🎯 Фильтры"
-        )
-
-        employees = load_employees()
-
-        if employees:
-
-            selected_employee = st.selectbox(
-                "Выберите сотрудника для фильтрации:",
-                options=[
-                    "Все сотрудники"
-                ] + employees,
-                index=0
-            )
-
-        else:
-
-            st.info(
-                "Нет данных о сотрудниках"
-            )
-
         st.divider()
 
 
@@ -846,9 +730,7 @@ if st.session_state.tile_report:
 # ПРИМЕНЯЕМ НАСТРОЙКИ ШИРИНЫ
 # ============================================================
 
-apply_width_settings(
-    "Широкая"
-)
+apply_width_settings()
 
 
 # ============================================================
@@ -1131,35 +1013,6 @@ else:
 
 
         # ====================================================
-        # ОТЧЕТ С ФИЛЬТРОМ СОТРУДНИКА
-        # ====================================================
-
-        elif report_name == 'Отборы сотрудников по волнам':
-
-            df = load_data(
-                report_name,
-                params
-            )
-
-
-            if (
-                not df.empty
-                and selected_employee
-                and selected_employee != "Все сотрудники"
-            ):
-
-                df = df[
-                    df["Сотрудник"]
-                    == selected_employee
-                ]
-
-                filter_value = (
-                    f"Сотрудник: "
-                    f"{selected_employee}"
-                )
-
-
-        # ====================================================
         # ОБЫЧНЫЕ ОТЧЕТЫ
         # ====================================================
 
@@ -1197,14 +1050,25 @@ else:
 
 
         # ====================================================
-        # ЛОГИРУЕМ ПРОСМОТР ОТЧЕТА
+        # ЛОГИРУЕМ ЗАПУСК ОТЧЕТА ОДИН РАЗ ЗА СЕССИЮ
         # ====================================================
 
-        logger.log_action(
-            'view_report',
+        report_key = (
             report_name,
-            params
+            tuple(params) if params else None
         )
+
+        if report_key not in st.session_state.logged_reports:
+
+            logger.log_action(
+                'view_report',
+                report_name,
+                params
+            )
+
+            st.session_state.logged_reports.add(
+                report_key
+            )
 
 
         # ====================================================
