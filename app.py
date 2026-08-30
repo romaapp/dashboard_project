@@ -22,7 +22,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.write("DEBUG HEADERS:", dict(st.context.headers))
 
 # ============================================================
 # ИНИЦИАЛИЗАЦИЯ СЕССИИ
@@ -34,16 +33,9 @@ if 'session_id' not in st.session_state:
 if 'visit_logged' not in st.session_state:
     st.session_state.visit_logged = False
 
-
-# ============================================================
-# ЛОГИРОВАНИЕ ВИЗИТА ОДИН РАЗ ЗА СЕССИЮ
-# ============================================================
-
-if 'visit_logged' not in st.session_state:
-
+if not st.session_state.visit_logged:
     logger.log_action('visit')
     st.session_state.visit_logged = True
-
 
 
 # ============================================================
