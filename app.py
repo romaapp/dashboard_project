@@ -22,6 +22,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+st.write("DEBUG HEADERS:", dict(st.context.headers))
 
 # ============================================================
 # ИНИЦИАЛИЗАЦИЯ СЕССИИ
@@ -29,6 +30,20 @@ st.set_page_config(
 
 if 'session_id' not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
+
+if 'visit_logged' not in st.session_state:
+    st.session_state.visit_logged = False
+
+
+# ============================================================
+# ЛОГИРОВАНИЕ ВИЗИТА ОДИН РАЗ ЗА СЕССИЮ
+# ============================================================
+
+if 'visit_logged' not in st.session_state:
+
+    logger.log_action('visit')
+    st.session_state.visit_logged = True
+
 
 
 # ============================================================
@@ -40,18 +55,19 @@ if 'selected_reports' not in st.session_state:
 
 
 # ============================================================
+# ИНИЦИАЛИЗАЦИЯ ДЛЯ ЛОГИРОВАНИЯ ЗАПУЩЕННЫХ ОТЧЕТОВ
+# ============================================================
+
+if 'logged_reports' not in st.session_state:
+    st.session_state.logged_reports = set()
+
+
+# ============================================================
 # ИНИЦИАЛИЗАЦИЯ ДЛЯ ЗАПУСКА ОТЧЕТА ИЗ ПЛИТКИ
 # ============================================================
 
 if 'tile_report' not in st.session_state:
     st.session_state.tile_report = None
-
-
-# ============================================================
-# ЛОГИРОВАНИЕ ВИЗИТА
-# ============================================================
-
-logger.log_action('visit')
 
 
 # ============================================================
@@ -130,73 +146,42 @@ def get_top_reports(limit=5):
 # CSS ДЛЯ УПРАВЛЕНИЯ ШИРИНОЙ
 # ============================================================
 
-def apply_width_settings(mode):
-    """Применяет настройки ширины"""
+def apply_width_settings():
+    """Применяет настройки ширины страницы"""
 
-    if mode == "Узкая":
+    css = """
+    <style>
 
-        css = """
-        <style>
+        .main > div {
+            max-width: 100% !important;
+            padding-left: 2rem !important;
+            padding-right: 2rem !important;
+        }
 
-            .main > div {
-                max-width: 800px !important;
-                margin: 0 auto !important;
-                padding-left: 1rem !important;
-                padding-right: 1rem !important;
-            }
+        section.main > div {
+            max-width: 100% !important;
+        }
 
-        </style>
-        """
+        .stPlotlyChart {
+            width: 100% !important;
+        }
 
-    elif mode == "Стандартная":
+        .stDataFrame {
+            width: 100% !important;
+        }
 
-        css = """
-        <style>
+        .stDataFrame > div {
+            width: 100% !important;
+        }
 
-            .main > div {
-                max-width: 1200px !important;
-                margin: 0 auto !important;
-                padding-left: 2rem !important;
-                padding-right: 2rem !important;
-            }
-
-        </style>
-        """
-
-    else:
-
-        css = """
-        <style>
-
-            .main > div {
-                max-width: 100% !important;
-                padding-left: 2rem !important;
-                padding-right: 2rem !important;
-            }
-
-            section.main > div {
-                max-width: 100% !important;
-            }
-
-            .stPlotlyChart {
-                width: 100% !important;
-            }
-
-            .stDataFrame {
-                width: 100% !important;
-            }
-
-            .stDataFrame > div {
-                width: 100% !important;
-            }
-
-        </style>
-        """
+    </style>
+    """
 
     st.markdown(
         css,
         unsafe_allow_html=True
     )
+
 
 
 # ============================================================
@@ -319,171 +304,6 @@ def filter_dataframe(df, key):
         )
 
     return df_filtered
-
-
-def dataframe_download_button(df, key):
-    """Кнопка скачивания DataFrame в CSV с корректным разделителем для Excel."""
-
-    csv_data = df_filtered.to_csv(
-        index=False,
-        sep=';',
-        encoding='utf-8-sig'
-    ).encode('utf-8-sig')
-
-    st.download_button(
-        label="⇩",
-        data=csv_data,
-        file_name=f"{key}.csv",
-        mime="text/csv",
-        key=f"download_{key}",
-        help="Скачать таблицу в CSV"
-    )
-
-
-def display_report(
-    df,
-    report_name,
-    show_charts,
-    show_data,
-    show_stats
-):
-    """Отображает один отчет с настройками"""
-
-    st.subheader(
-        report_name.replace('_', ' ').title()
-    )
-
-    if len(df.columns) == 2:
-
-        col1, col2 = df.columns[:2]
-
-        if show_charts:
-
-            try:
-
-                if pd.api.types.is_datetime64_any_dtype(
-                    df[col1]
-                ):
-
-                    fig = px.line(
-                        df,
-                        x=col1,
-                        y=col2,
-                        title=f"{col2} по датам",
-                        template="plotly_white"
-                    )
-
-                else:
-
-                    fig = px.bar(
-                        df,
-                        x=col1,
-                        y=col2,
-                        title=f"{col2} по категориям",
-                        template="plotly_white"
-                    )
-
-                st.plotly_chart(
-                    fig,
-                    use_container_width=True
-                )
-
-            except Exception as e:
-
-                st.warning(
-                    f"Не удалось построить график: {str(e)}"
-                )
-
-        
-        if show_data:
-
-            st.dataframe(
-                df,
-                use_container_width=True
-            )
-
-        if show_stats and len(df) > 0:
-
-            with st.expander(
-                "📈 Сводная статистика"
-            ):
-
-                try:
-
-                    st.dataframe(
-                        df.describe(),
-                        use_container_width=True
-                    )
-
-                except Exception:
-
-                    st.info(
-                        "Нет данных для статистики"
-                    )
-
-    else:
-
-        numeric_cols = df.select_dtypes(
-            include=['float64', 'int64']
-        ).columns
-
-        if show_charts and len(numeric_cols) > 0:
-
-            try:
-
-                fig = px.bar(
-                    df,
-                    x=df.columns[0],
-                    y=numeric_cols[0],
-                    title=(
-                        f"{numeric_cols[0]} "
-                        f"по {df.columns[0]}"
-                    ),
-                    template="plotly_white"
-                )
-
-                st.plotly_chart(
-                    fig,
-                    use_container_width=True
-                )
-
-            except Exception as e:
-
-                st.warning(
-                    f"Не удалось построить график: {str(e)}"
-                )
-
-        if show_data:
-
-            st.dataframe(
-                df,
-                use_container_width=True
-            )
-
-        if (
-            show_stats
-            and len(df) > 0
-            and len(numeric_cols) > 0
-        ):
-
-            with st.expander(
-                "📈 Сводная статистика"
-            ):
-
-                try:
-
-                    st.dataframe(
-                        df[numeric_cols].describe(),
-                        use_container_width=True
-                    )
-
-                except Exception:
-
-                    st.info(
-                        "Нет данных для статистики"
-                    )
-
-    st.divider()
 
 
 # ============================================================
@@ -677,7 +497,12 @@ def display_parameterized_report(
 # ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ
 # ============================================================
 
-engine = Config.get_engine()
+@st.cache_resource
+def get_db_engine():    
+    return Config.get_engine()
+
+
+engine = get_db_engine()
 
 
 # ============================================================
@@ -733,39 +558,6 @@ def load_data(query_name, params=None):
         return pd.DataFrame()
 
 
-# ============================================================
-# ФУНКЦИЯ ЗАГРУЗКИ СПИСКА СОТРУДНИКОВ
-# ============================================================
-
-@st.cache_data
-def load_employees():
-    """Загружает список сотрудников из БД"""
-
-    try:
-
-        query = SQL_QUERIES.get(
-            'Список сотрудников'
-        )
-
-        if query:
-
-            df = pd.read_sql(
-                query,
-                engine
-            )
-
-            return df["Сотрудник"].tolist()
-
-        return []
-
-    except Exception as e:
-
-        st.error(
-            f"Ошибка загрузки списка сотрудников: {str(e)}"
-        )
-
-        return []
-
 
 # ============================================================
 # SIDEBAR
@@ -801,9 +593,7 @@ with st.sidebar:
         "📋 Выбор отчетов"
     )
 
-    service_queries = [
-        'Список сотрудников'
-    ]
+    service_queries = []
 
     parameterized_reports = [
         'Статусы заявок отгрузки'
@@ -948,9 +738,7 @@ if st.session_state.tile_report:
 # ПРИМЕНЯЕМ НАСТРОЙКИ ШИРИНЫ
 # ============================================================
 
-apply_width_settings(
-    "Широкая"
-)
+apply_width_settings()
 
 
 # ============================================================
@@ -1270,14 +1058,25 @@ else:
 
 
         # ====================================================
-        # ЛОГИРУЕМ ПРОСМОТР ОТЧЕТА
+        # ЛОГИРУЕМ ЗАПУСК ОТЧЕТА ОДИН РАЗ ЗА СЕССИЮ
         # ====================================================
 
-        logger.log_action(
-            'view_report',
+        report_key = (
             report_name,
-            params
+            tuple(params) if params else None
         )
+
+        if report_key not in st.session_state.logged_reports:
+
+            logger.log_action(
+                'view_report',
+                report_name,
+                params
+            )
+
+            st.session_state.logged_reports.add(
+                report_key
+            )
 
 
         # ====================================================

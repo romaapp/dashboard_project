@@ -103,13 +103,13 @@ group by mh.x, mh.y
 	ct.name as "Сотрудник",
 	count(ct.cnt) filter (
 where
-	ct.cnt <= 2) as "Меньше 2 отборов",
+	ct.cnt <= 2) as "До 2 отборов",
 	count(ct.cnt) filter (
 where
 	ct.cnt <= 5 and ct.cnt > 2) as "От 3 до 5 отборов",
 	count(ct.cnt) filter (
 where
-	ct.cnt <= 10 and ct.cnt > 5) as "От 5 до 10 отборов",
+	ct.cnt <= 10 and ct.cnt > 5) as "От 6 до 10 отборов",
 	count(ct.cnt) filter (
 where
 	ct.cnt > 10) as "Больше 10 отборов"
@@ -148,13 +148,6 @@ order by
             hm.wave_id
     """,
     
-    'Список сотрудников': """
-        SELECT DISTINCT
-            hm.targetlocationname as "Сотрудник"
-        FROM hdr_materialpicking as hm
-        WHERE hm.finishdate::date = current_date
-        ORDER BY hm.targetlocationname
-    """,
 
 	    'Средняя скорость отбора в час': """
         select 
