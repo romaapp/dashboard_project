@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from io import BytesIO
 from datetime import datetime
 from config import Config
 from queries import SQL_QUERIES
@@ -200,32 +199,6 @@ def apply_width_settings(mode):
 
 
 # ============================================================
-# ФУНКЦИЯ ДЛЯ ПРЕОБРАЗОВАНИЯ В EXCEL
-# ============================================================
-
-
-def dataframe_to_excel(df):
-    """Преобразует DataFrame в Excel-файл."""
-
-    output = BytesIO()
-
-    with pd.ExcelWriter(
-        output,
-        engine="openpyxl"
-    ) as writer:
-
-        df.to_excel(
-            writer,
-            index=False,
-            sheet_name="Данные"
-        )
-
-    output.seek(0)
-
-    return output.getvalue()
-
-
-# ============================================================
 # ФУНКЦИЯ ДЛЯ ОТОБРАЖЕНИЯ ОТЧЕТА
 # ============================================================
 
@@ -234,45 +207,15 @@ def dataframe_to_excel(df):
 # ============================================================
 
 def filter_dataframe(df, key):
-    """Фильтрует строки таблицы и предоставляет кнопки очистки и скачивания."""
+    """Фильтрует строки таблицы по поисковому запросу."""
 
-    def clear_search():
-        st.session_state[key] = ""
-
-    col1, col2, col3 = st.columns([5, 1, 1])
-
-    with col1:
-
-        search_text = st.text_input(
-            "🔎 Поиск по таблице",
-            key=key,
-            placeholder="Введите значение для поиска..."
-        )
-
-    with col2:
-
-        st.markdown(
-            """
-            <div style="height: 28px;"></div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        st.button(
-            "✖ Очистить",
-            key=f"{key}_clear",
-            use_container_width=True,
-            on_click=clear_search
-        )
-
-    # ========================================================
-    # ФИЛЬТРАЦИЯ
-    # ========================================================
-
-    df_filtered = df
+    search_text = st.text_input(
+        "🔎 Поиск по таблице",
+        key=key,
+        placeholder="Введите значение для поиска..."
+    )
 
     if search_text:
-
         search_text = search_text.lower()
 
         mask = df.astype(str).apply(
@@ -282,62 +225,9 @@ def filter_dataframe(df, key):
             )
         ).any(axis=1)
 
-        df_filtered = df[mask]
+        df = df[mask]
 
-    # ========================================================
-    # ПОДГОТОВКА EXCEL
-    # ========================================================
-
-    excel_data = dataframe_to_excel(
-        df_filtered
-    )
-
-    # ========================================================
-    # КНОПКА СКАЧИВАНИЯ
-    # ========================================================
-
-    with col3:
-
-        st.markdown(
-            """
-            <div style="height: 28px;"></div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        st.download_button(
-            "⇩ Скачать",
-            data=excel_data,
-            file_name=f"{key}.xlsx",
-            mime=(
-                "application/vnd.openxmlformats-"
-                "officedocument.spreadsheetml.sheet"
-            ),
-            key=f"download_{key}",
-            use_container_width=True,
-            help="Скачать таблицу в Excel"
-        )
-
-    return df_filtered
-
-
-def dataframe_download_button(df, key):
-    """Кнопка скачивания DataFrame в CSV с корректным разделителем для Excel."""
-
-    csv_data = df_filtered.to_csv(
-        index=False,
-        sep=';',
-        encoding='utf-8-sig'
-    ).encode('utf-8-sig')
-
-    st.download_button(
-        label="⇩",
-        data=csv_data,
-        file_name=f"{key}.csv",
-        mime="text/csv",
-        key=f"download_{key}",
-        help="Скачать таблицу в CSV"
-    )
+    return df
 
 
 def display_report(
@@ -672,6 +562,8 @@ def display_parameterized_report(
                         "Нет данных для статистики"
                     )
 
+    # st.divider()
+
 
 # ============================================================
 # ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ
@@ -809,6 +701,10 @@ with st.sidebar:
         'Статусы заявок отгрузки'
     ]
 
+    # filter_reports = [
+    #     'Отборы сотрудников по волнам'
+    # ]
+
     all_reports = [
         key
         for key in SQL_QUERIES.keys()
@@ -890,6 +786,42 @@ with st.sidebar:
             help="Выберите дату"
         )
         st.divider()
+
+
+    # ========================================================
+    # ФИЛЬТРЫ ДЛЯ ОТЧЕТОВ
+    # ========================================================
+
+    # selected_employee = None
+
+    # if any(
+    #     report in filter_reports
+    #     for report in selected_reports
+    # ):
+
+    #     st.subheader(
+    #         "🎯 Фильтры"
+    #     )
+
+    #     employees = load_employees()
+
+    #     if employees:
+
+    #         selected_employee = st.selectbox(
+    #             "Выберите сотрудника для фильтрации:",
+    #             options=[
+    #                 "Все сотрудники"
+    #             ] + employees,
+    #             index=0
+    #         )
+
+    #     else:
+
+    #         st.info(
+    #             "Нет данных о сотрудниках"
+    #         )
+
+    #     st.divider()
 
 
     # ========================================================
@@ -1230,6 +1162,35 @@ else:
             # Передаем дату как параметр в формате YYYY-MM-DD
             params = (selected_date.strftime('%Y-%m-%d'),)
             df = load_data(report_name, params)
+
+
+        # ====================================================
+        # ОТЧЕТ С ФИЛЬТРОМ СОТРУДНИКА
+        # ====================================================
+
+        # elif report_name == 'Отборы сотрудников по волнам':
+
+        #     df = load_data(
+        #         report_name,
+        #         params
+        #     )
+
+
+        #     if (
+        #         not df.empty
+        #         and selected_employee
+        #         and selected_employee != "Все сотрудники"
+        #     ):
+
+        #         df = df[
+        #             df["Сотрудник"]
+        #             == selected_employee
+        #         ]
+
+        #         filter_value = (
+        #             f"Сотрудник: "
+        #             f"{selected_employee}"
+        #         )
 
 
         # ====================================================
