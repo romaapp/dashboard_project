@@ -150,45 +150,65 @@ order by
     
 
 	    'Средняя скорость отбора в час': """
-        select 
-	    hm.targetlocationname as "Сотрудник",
-	    count(hm.tid) as "Общее количество отборов",
-	    ROUND(count(hm.tid)/(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - CURRENT_DATE - INTERVAL '5 hours')) / 3600),2) as "Средняя скорость отбора в час"
-        from hdr_materialpicking as hm
-        where hm.finishdate::date = current_date
-        group by 	
-	    hm.targetlocationname
-        order by 
-	    hm.targetlocationname
+select 
+	hm.targetlocationname as "Сотрудник",
+	count(hm.tid) as "Общее количество отборов",
+	ROUND(count(hm.tid)/(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - CURRENT_DATE - INTERVAL '5 hours')) / 3600),2) as "Средняя скорость отбора в час",
+	count(distinct hm.material_id) as "Количество артикулов",
+	ROUND(count(distinct hm.material_id)/(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - CURRENT_DATE - INTERVAL '5 hours')) / 3600),2) as "Количество артикулов в час", 
+	ROUND(sum(hm.nettoweight),1) as "Общий вес"
+from hdr_materialpicking as hm
+where hm.finishdate::date = current_date
+group by 	
+	hm.targetlocationname
+order by 
+	hm.targetlocationname
     """,
 
-	    'Выданные клиентам заказы': """
-        SELECT
-            hd.readydate::date as "Дата готовности отгрузки",
-            d.deliverynumber as "Номер заявки",
-            d.debtorpartnername as "Грузополучатель",
-            d.extrafield3 as "Заказ клиента",
-            count(*) filter(where td.sys_pickedbasequantity is not null) as "К-во арт."
-        FROM
-            hdr_deliveryrequest as d
-        JOIN tbl_deliveryrequestmaterials as td ON
-            td.transaction_id = d.transaction_id
-        JOIN hdr_delivery as hd ON
-            hd.purchasenumber = d.deliverynumber
-        WHERE  
-            td.shortagereason_id is null
-            AND d.deliverytype_id = 7
-            AND d.deliverysubtype_id = '109'
-            AND d.transportnumber is not null
-            AND hd.isreadyforshipment = '1'
-            AND hd.readydate::date = %s
-        GROUP BY 	
-            d.deliverynumber,
-            d.debtorpartnername,
-            d.extrafield3,
-            hd.readydate::date
-        ORDER BY d.deliverynumber
-    """,
+'Выданные клиентам заказы': """
+    SELECT
+        CASE 
+            WHEN hd.shipdate::DATE IS NULL
+            THEN 'Заказ не отгружен'
+            ELSE TO_CHAR(hd.shipdate::DATE, 'DD.MM.YYYY')
+        END AS "Дата отгрузки",
+        d.deliverynumber AS "Номер заявки",
+        d.debtorpartnername AS "Грузополучатель",
+        d.extrafield3 AS "Заказ клиента",
+        COUNT(*) FILTER (
+            WHERE td.sys_pickedbasequantity IS NOT NULL
+        ) AS "К-во арт."
+    FROM
+        hdr_deliveryrequest AS d
+    JOIN tbl_deliveryrequestmaterials AS td ON
+        td.transaction_id = d.transaction_id
+    JOIN hdr_delivery AS hd ON
+        hd.purchasenumber = d.deliverynumber
+    WHERE
+        td.shortagereason_id IS NULL
+        AND d.deliverytype_id = 7
+        AND d.deliverysubtype_id = '109'
+
+        -- Промежуток дат
+        AND TO_DATE(
+            SUBSTRING(
+                d.transportnumber FROM '\d{2}\.\d{2}\.\d{4}'
+            ),
+            'DD.MM.YYYY'
+        ) BETWEEN %s AND %s
+
+        AND hd.isreadyforshipment = '1'
+
+    GROUP BY
+        d.deliverynumber,
+        d.debtorpartnername,
+        d.extrafield3,
+        hd.shipdate::date
+
+    ORDER BY
+        "Дата отгрузки",
+        d.deliverynumber
+""",
 
 	    'Операции по ресурсам': """
         select
