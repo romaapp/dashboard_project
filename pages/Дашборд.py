@@ -141,16 +141,15 @@ st.markdown(
     /* ====================================================== */
 
     .refresh-timer {
-        font-size: 16px;
-        font-weight: 600;
+        font-size: 14px;
+        font-weight: 400;
         margin-top: 5px;
         margin-bottom: 10px;
     }
 
-
     .refresh-countdown {
-        font-size: 18px;
-        font-weight: 700;
+        font-size: 14px;
+        font-weight: 400;
     }
 
 
@@ -550,17 +549,20 @@ def reports_page():
 
     if st.session_state.auto_refresh_enabled:
 
-        st.markdown(
-            f"""
-<div class="refresh-timer">
-    🔄 Следующее обновление через:
-    <span class="refresh-countdown">
-        {seconds_left_refresh} сек.
-    </span>
-</div>
-""",
-            unsafe_allow_html=True
-        )
+        with st.sidebar:
+            
+            st.divider()
+            st.markdown(
+                f"""
+    <div class="refresh-timer">
+        🔄 Следующее обновление через:
+        <span class="refresh-countdown">
+            {seconds_left_refresh} сек.
+        </span>
+    </div>
+    """,
+                unsafe_allow_html=True
+            )
 
     else:
 
