@@ -1252,3 +1252,27 @@ with col1:
         f"📊 Всего запросов: "
         f"{len(SQL_QUERIES)}"
     )
+
+with col3:
+
+    st.markdown(
+        """
+        <div style="
+            text-align: right;
+            font-size: 0.8rem;
+            color: rgba(49, 51, 63, 0.6);
+        ">
+            <a
+                href="https://github.com/romaapp/dashboard_project"
+                target="_blank"
+                style="
+                    color: inherit;
+                    text-decoration: none;
+                "
+            >
+                💻 GitHub проекта
+            </a>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )

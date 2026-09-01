@@ -421,7 +421,7 @@ logs/*.db
 
 # 👨‍💻 Автор
 
-**Roman**
+**Mishin Roman**
 
 GitHub:
 
