@@ -250,7 +250,7 @@ with col_total:
 with col_active:
 
     st.metric(
-        "🟡 В работе",
+        "⌛ В работе",
         stats["active"]
     )
 
@@ -258,7 +258,7 @@ with col_active:
 with col_completed:
 
     st.metric(
-        "🟢 Выполнено",
+        "✅ Выполнено",
         stats["completed"]
     )
 
@@ -332,9 +332,9 @@ else:
         # ----------------------------------------------------
 
         status_text = (
-            "🟢 Выполнено"
+            "✅ Выполнено"
             if completed
-            else "🟡 В работе"
+            else "⌛ В работе"
         )
 
 
@@ -475,7 +475,7 @@ else:
             if completed:
 
                 text = (
-                    f"🟢 Выполнено "
+                    f"✅ Выполнено "
                     f"{completed_at or ''}"
                 )
 

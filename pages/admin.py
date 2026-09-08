@@ -183,9 +183,9 @@ def main():
             # ------------------------------------------------
 
             status = (
-                "🟢 Выполнено"
+                "✅ Выполнено"
                 if completed
-                else "🟡 В работе"
+                else "⌛ В работе"
             )
 
 
@@ -287,7 +287,7 @@ def main():
                 if completed:
 
                     completion_text = (
-                        f"🟢 Выполнено: "
+                        f"✅ Выполнено: "
                         f"{completed_at or ''}"
                     )
 
