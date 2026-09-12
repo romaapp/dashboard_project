@@ -2,6 +2,8 @@ import os
 import html
 import streamlit as st
 
+from styles import load_css
+
 from suggestions import (
     add_suggestion,
     get_suggestions,
@@ -21,58 +23,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-
-# ============================================================
-# CSS
-# ============================================================
-
-st.markdown(
-    """
-    <style>
-
-        /* ----------------------------------------------------
-           Текст предложения
-        ---------------------------------------------------- */
-
-        .suggestion-text {
-            white-space: pre-wrap;
-            line-height: 1.6;
-            font-size: 15px;
-            color: inherit !important;
-        }
-
-
-        /* ----------------------------------------------------
-           Метаданные
-        ---------------------------------------------------- */
-
-        .suggestion-meta {
-            color: rgba(128, 128, 128, 0.9);
-            font-size: 13px;
-        }
-
-
-        /* ----------------------------------------------------
-           Expander
-        ---------------------------------------------------- */
-
-        div[data-testid="stExpander"] {
-            border-radius: 12px;
-        }
-
-
-        /* ----------------------------------------------------
-           Кнопка предложения
-        ---------------------------------------------------- */
-
-        .suggestion-button-container {
-            width: 100%;
-        }
-
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+load_css()
 
 
 # ============================================================

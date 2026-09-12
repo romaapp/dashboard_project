@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from styles import load_css
 
 from config import Config
 from queries import AUTO_REFRESH_OUT
@@ -11,11 +12,13 @@ from queries import AUTO_REFRESH_OUT
 # ============================================================
 
 st.set_page_config(
-    page_title="Дашборд",
+    page_title="Дашборд отгрузки",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+load_css()
 
 
 # ============================================================
@@ -82,89 +85,6 @@ if "next_carousel_time" not in st.session_state:
 if "carousel_enabled" not in st.session_state:
 
     st.session_state.carousel_enabled = True
-
-
-# ============================================================
-# CSS
-# ============================================================
-
-st.markdown(
-    """
-<style>
-
-    /* ====================================================== */
-    /* Основной контейнер */
-    /* ====================================================== */
-
-    .main > div {
-        padding-top: 3rem !important;
-    }
-
-    .block-container {
-        padding-top: 3rem !important;
-    }
-
-    /* ====================================================== */
-    /* Номер и название отчета */
-    /* ====================================================== */
-
-    .carousel-counter {
-        text-align: center;
-        font-size: 18px;
-        font-weight: 600;
-        margin-top: 15px;
-        margin-bottom: 15px;
-        padding: 18px;
-        background: var(--secondary-background-color);
-        color: var(--text-color) !important;
-        border-radius: 10px;
-    }
-
-
-
-    /* ====================================================== */
-    /* Таймер карусели */
-    /* ====================================================== */
-
-    .carousel-timer {
-        text-align: center;
-        font-size: 14px;
-        margin-bottom: 15px;
-        padding: 18px;
-        background: #f8f9fa;
-        border-radius: 10px;
-    }
-
-
-    /* ====================================================== */
-    /* Таймер обновления */
-    /* ====================================================== */
-
-    .refresh-timer {
-        font-size: 14px;
-        font-weight: 400;
-        margin-top: 5px;
-        margin-bottom: 10px;
-    }
-
-    .refresh-countdown {
-        font-size: 14px;
-        font-weight: 400;
-    }
-
-
-    /* ====================================================== */
-    /* Кнопки */
-    /* ====================================================== */
-
-    div.stButton > button {
-        width: 100%;
-    }
-
-</style>
-""",
-    unsafe_allow_html=True
-)
 
 
 # ============================================================
@@ -553,17 +473,18 @@ def reports_page():
     if st.session_state.auto_refresh_enabled:
 
         with st.sidebar:
-            
+
             st.divider()
+
             st.markdown(
                 f"""
-    <div class="refresh-timer">
-        🔄 Следующее обновление через:
-        <span class="refresh-countdown">
-            {seconds_left_refresh} сек.
-        </span>
-    </div>
-    """,
+<div class="refresh-timer">
+    🔄 Следующее обновление через:
+    <span class="refresh-countdown">
+        {seconds_left_refresh} сек.
+    </span>
+</div>
+""",
                 unsafe_allow_html=True
             )
 
@@ -601,26 +522,6 @@ def reports_page():
 """,
         unsafe_allow_html=True
     )
-
-
-#     # ========================================================
-#     # ТАЙМЕР КАРУСЕЛИ
-#     # ========================================================
-
-#     if (
-#         st.session_state.carousel_enabled
-#         and report_count > 1
-#     ):
-
-#         st.markdown(
-#             f"""
-# <div class="carousel-timer">
-#     Следующий отчет через:
-#     <b>{seconds_left_carousel} сек.</b>
-# </div>
-# """,
-#             unsafe_allow_html=True
-#         )
 
 
     # ========================================================

@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+from styles import load_css
 
 from config import Config
 from queries import AUTO_REFRESH_CLIENTS
@@ -17,6 +18,8 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+
+load_css()
 
 
 # ============================================================
@@ -40,42 +43,6 @@ if "next_refresh_time" not in st.session_state:
     st.session_state.next_refresh_time = (
         datetime.now().timestamp() + REFRESH_INTERVAL
     )
-
-
-# ============================================================
-# CSS
-# ============================================================
-
-st.markdown(
-    """
-    <style>
-
-        .main > div {
-            padding-top: 1rem !important;
-        }
-
-        .block-container {
-            padding-top: 1rem !important;
-        }
-
-        /* Блок таймера */
-
-        .refresh-timer {
-            font-size: 14px;
-            font-weight: 400;
-            margin-top: 5px;
-            margin-bottom: 10px;
-        }
-
-        .refresh-countdown {
-            font-size: 14px;
-            font-weight: 400;
-        }
-
-    </style>
-    """,
-    unsafe_allow_html=True
-)
 
 
 # ============================================================
@@ -236,8 +203,10 @@ with st.sidebar:
         load_data.clear()
 
         st.rerun()
-        
+
+
     st.header("⚙️ Настройки")
+
 
     # --------------------------------------------------------
     # АВТООБНОВЛЕНИЕ
@@ -249,6 +218,7 @@ with st.sidebar:
         "Включить автообновление (20 сек.)",
         value=st.session_state.auto_refresh_enabled
     )
+
 
     # --------------------------------------------------------
     # ИЗМЕНЕНИЕ СОСТОЯНИЯ АВТООБНОВЛЕНИЯ
@@ -369,21 +339,13 @@ if st.session_state.auto_refresh_enabled:
         )
 
         # ----------------------------------------------------
-        # ИНФОРМАЦИЯ О ПОСЛЕДНЕМ ОБНОВЛЕНИИ
-        # ----------------------------------------------------
-
-        st.caption(
-            "Последнее обновление: "
-            f"{st.session_state.last_refresh_time.strftime('%Y-%m-%d %H:%M:%S')}"
-        )
-
-        # ----------------------------------------------------
         # ОБРАТНЫЙ ОТСЧЕТ
         # ----------------------------------------------------
 
         with st.sidebar:
-            
+
             st.divider()
+
             st.markdown(
                 f"""
                 <div class="refresh-timer">
@@ -411,15 +373,10 @@ if st.session_state.auto_refresh_enabled:
 
 
 # ============================================================
-# АВТООБНОВЛЕНИЕ 
+# АВТООБНОВЛЕНИЕ
 # ============================================================
 
 else:
-
-    st.caption(
-        "Последнее обновление: "
-        f"{st.session_state.last_refresh_time.strftime('%Y-%m-%d %H:%M:%S')}"
-    )
 
     st.info(
         "⏸️ Автообновление выключено"
