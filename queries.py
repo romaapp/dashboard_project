@@ -1,10 +1,11 @@
 # Здесь вы можете хранить все свои SQL-запросы
 SQL_QUERIES = {
     'Не выданные заявки': """
-        select
+select
 	distinct hd.purchasenumber as "Номер заявки",
 	hd.addresseedebtorname as "Грузополучатель",
 	hd.routename as "Транспорт",
+	hd.comment as "Комментарий",
 	TO_CHAR(hd.shipmentdate, 'dd.mm.yyyy') as "Плановая дата отгрузки",
 	CURRENT_DATE - hd.shipmentdate::date as "Количество дней",
 	TO_CHAR(hd.shipmentdate, 'dd.mm.yyyy') || ' (заявок: ' || COUNT(*) over (partition by CURRENT_DATE - hd.shipmentdate::date) || ')' as "Дата и кол-во заявок"

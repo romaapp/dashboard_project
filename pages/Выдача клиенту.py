@@ -181,8 +181,11 @@ def show_reports():
             # Таблица
             # ------------------------------------------------
 
+            df_display = df.copy()
+            df_display.index = range(1, len(df_display) + 1)
+
             st.dataframe(
-                df,
+                df_display,
                 use_container_width=True
             )
 

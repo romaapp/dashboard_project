@@ -303,9 +303,11 @@ def filter_dataframe(df, key):
         search_text = search_text.lower()
 
         mask = df.astype(str).apply(
-            lambda column: column.str.lower().str.contains(
+            lambda column: column.str.contains(
                 search_text,
-                na=False
+                case=False,
+                na=False,
+                regex=False
             )
         ).any(axis=1)
 
@@ -443,8 +445,16 @@ def display_parameterized_report(
 
         if show_data:
 
-            st.dataframe(
+            df_filtered = filter_dataframe(
                 df,
+                f"search_{report_name}"
+            )
+
+            df_filtered = df_filtered.copy()
+            df_filtered.index = range(1, len(df_filtered) + 1)
+
+            st.dataframe(
+                df_filtered,
                 use_container_width=True
             )
 
@@ -457,7 +467,7 @@ def display_parameterized_report(
                 try:
 
                     numeric_cols = df.select_dtypes(
-                        include=['float64', 'int64']
+                        include="number"
                     ).columns
 
                     if len(numeric_cols) > 0:
@@ -482,7 +492,7 @@ def display_parameterized_report(
     else:
 
         numeric_cols = df.select_dtypes(
-            include=['float64', 'int64']
+            include="number"
         ).columns
 
         if show_charts and len(numeric_cols) > 0:
@@ -517,6 +527,9 @@ def display_parameterized_report(
                 df,
                 f"search_{report_name}"
             )
+
+            df_filtered = df_filtered.copy()
+            df_filtered.index = range(1, len(df_filtered) + 1)
 
             st.dataframe(
                 df_filtered,
@@ -663,13 +676,51 @@ with st.sidebar:
 
 
     # ========================================================
-    # MULTISELECT
+    # ОБРАБОТКА ВЫБОРА ЧЕРЕЗ ПЛИТКУ
+    # ========================================================
+
+    if st.session_state.tile_report:
+
+        report = st.session_state.tile_report
+
+        if report in all_reports:
+
+            current_reports = (
+                st.session_state.selected_reports.copy()
+            )
+
+            if report not in current_reports:
+                current_reports.append(report)
+
+            # Сохраняем выбранные отчеты
+            st.session_state.selected_reports = current_reports
+
+            # ВАЖНО:
+            # синхронизируем состояние самого multiselect
+            # ДО его создания
+            st.session_state.reports_selector = current_reports
+
+        st.session_state.tile_report = None
+
+
+    # ========================================================
+    # ИНИЦИАЛИЗАЦИЯ СОСТОЯНИЯ MULTISELECT
+    # ========================================================
+
+    if "reports_selector" not in st.session_state:
+
+        st.session_state.reports_selector = (
+            st.session_state.selected_reports.copy()
+        )
+
+
+    # ========================================================
+    # ВЫБОР ОТЧЕТОВ
     # ========================================================
 
     selected_reports = st.multiselect(
         "Выберите отчеты для отображения:",
         options=all_reports,
-        default=st.session_state.selected_reports,
         key="reports_selector"
     )
 
@@ -788,25 +839,6 @@ with st.sidebar:
 
 
 # ============================================================
-# ОБРАБОТКА ВЫБОРА ЧЕРЕЗ ПЛИТКУ
-# ============================================================
-
-if st.session_state.tile_report:
-
-    report = st.session_state.tile_report
-
-    if report in all_reports:
-
-        selected_reports = [report]
-
-        st.session_state.selected_reports = [
-            report
-        ]
-
-    st.session_state.tile_report = None
-
-
-# ============================================================
 # ПРИМЕНЯЕМ НАСТРОЙКИ ШИРИНЫ
 # ============================================================
 
@@ -840,7 +872,11 @@ if not selected_reports:
             """
             <style>
 
-                .tile-button .stButton button {
+                .st-key-tile_0 button,
+                .st-key-tile_1 button,
+                .st-key-tile_2 button,
+                .st-key-tile_3 button,
+                .st-key-tile_4 button {
 
                     width: 100% !important;
 
@@ -904,7 +940,11 @@ if not selected_reports:
                 }
 
 
-                .tile-button .stButton button:hover {
+                .st-key-tile_0 button:hover,
+                .st-key-tile_1 button:hover,
+                .st-key-tile_2 button:hover,
+                .st-key-tile_3 button:hover,
+                .st-key-tile_4 button:hover {   
 
                     transform:
                         translateY(-6px) !important;
@@ -930,7 +970,11 @@ if not selected_reports:
                 }
 
 
-                .tile-button .stButton button:active {
+                .st-key-tile_0 button:active,
+                .st-key-tile_1 button:active,
+                .st-key-tile_2 button:active,
+                .st-key-tile_3 button:active,
+                .st-key-tile_4 button:active {
 
                     transform:
                         translateY(-2px) !important;
@@ -961,12 +1005,7 @@ if not selected_reports:
 
             with cols[col_idx]:
 
-                with st.container():
-
-                    st.markdown(
-                        '<div class="tile-button">',
-                        unsafe_allow_html=True
-                    )
+                with st.container(key=f"tile_{i}"):
 
                     button_text = (
                         f"{icons[i % len(icons)]}\n\n"
@@ -975,28 +1014,15 @@ if not selected_reports:
                         f"▶ Нажмите для запуска"
                     )
 
-
                     if st.button(
                         button_text,
                         key=f"tile_btn_{i}",
                         use_container_width=True
                     ):
 
-                        # =================================================
-                        # НЕ МЕНЯЕМ СОСТОЯНИЕ MULTISELECT
-                        # =================================================
-
-                        st.session_state.tile_report = (
-                            report_name
-                        )
+                        st.session_state.tile_report = report_name
 
                         st.rerun()
-
-
-                    st.markdown(
-                        '</div>',
-                        unsafe_allow_html=True
-                    )
 
     else:
 
