@@ -233,6 +233,39 @@ group by
 	d.shipmentdate::date,
 	p.nameru
 order by d.shipmentdate::date, p.nameru
+    """,
+
+	    'Неотобранные артикулы(Заказы в работе)': """
+select
+	tz.nameen as "Технозона",
+	COUNT(hm.material_id)  as "Количество артикулов"
+from
+	hdr_materialpicking as hm
+join locations as l on
+	l.tid = hm.sourcelocation_id
+join technozones as tz on
+	tz.tid = l.routezone_id
+where 
+hm.taskdate is null
+group by 
+tz.nameen
+    """,
+
+	    'Количество неотобранных артикулов': """
+select
+	d.deliverydate::date as "Дата отгрузки",
+	COUNT(*)  as "Количество артикулов"
+from
+	hdr_deliveryrequest d
+join tbl_deliveryrequestmaterials as td on
+	td.transaction_id = d.transaction_id
+--Проверка на вычерки и тип поставки
+where  td.shortagereason_id is null
+and d.deliverydate::date >= CURRENT_DATE
+and d.deliverytype_id = 7
+and d.deliverysubtype is not null
+and td.sys_pickedbasequantity is null
+group by d.deliverydate::date
     """
 
 }
