@@ -10,6 +10,8 @@ from styles import load_css
 import uuid
 import os
 import sqlite3
+import psutil
+
 
 
 # ============================================================
@@ -17,21 +19,6 @@ import sqlite3
 # ============================================================
 
 load_css()
-
-
-# ============================================================
-# ИНИЦИАЛИЗАЦИЯ СЕССИИ
-# ============================================================
-
-if 'session_id' not in st.session_state:
-    st.session_state.session_id = str(uuid.uuid4())
-
-if 'visit_logged' not in st.session_state:
-    st.session_state.visit_logged = False
-
-if not st.session_state.visit_logged:
-    logger.log_action('visit')
-    st.session_state.visit_logged = True
 
 
 # ============================================================
@@ -711,7 +698,7 @@ with st.sidebar:
     # ДИАПАЗОН ДАТЫ ДЛЯ ОТЧЕТОВ
     # ========================================================
 
-    date_reports = ['Выданные клиентам заказы']
+    date_reports = ['Выданные клиентам заказы','Время прогрузки заказов']
 
     date_from = None
     date_to = None
@@ -907,7 +894,7 @@ else:
         # ОБРАБОТКА ОТЧЕТА С ДИАПАЗОНОМ ДАТ
         # ====================================================
 
-        elif report_name == 'Выданные клиентам заказы':
+        elif report_name in date_reports:
 
             if not date_from or not date_to:
 
@@ -1066,9 +1053,16 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
 
-    st.caption(
-        f"📊 Всего запросов: "
-        f"{len(SQL_QUERIES)}"
+    st.markdown(
+        f"""
+        <div style="
+            font-size: 0.8rem;
+            color: var(--text-color);
+        ">
+            📊 Всего запросов: {len(SQL_QUERIES)}
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
 with col3:
@@ -1078,7 +1072,7 @@ with col3:
         <div style="
             text-align: right;
             font-size: 0.8rem;
-            color: rgba(49, 51, 63, 0.6);
+            color: var(--text-color);
         ">
             <a
                 href="https://github.com/romaapp/dashboard_project"
