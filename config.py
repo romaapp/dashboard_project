@@ -14,6 +14,8 @@ class Config:
     DB_USER = os.getenv("DB_USER", "postgres")
     DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 
+    ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+
     @staticmethod
     def get_engine():
         """Создает подключение к PostgreSQL"""

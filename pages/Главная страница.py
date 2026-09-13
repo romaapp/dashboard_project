@@ -7,11 +7,8 @@ from config import Config
 from queries import SQL_QUERIES
 from logger import logger
 from styles import load_css
-import uuid
 import os
 import sqlite3
-import psutil
-
 
 
 # ============================================================

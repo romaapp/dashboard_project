@@ -4,6 +4,7 @@ import plotly.express as px
 from datetime import datetime
 from logger import logger
 from styles import load_css
+from config import Config
 from suggestions import (
     get_suggestions,
     get_suggestion_files,
@@ -56,7 +57,7 @@ def check_password():
 
         if st.button("Войти"):
 
-            if password == "mdm_admin":
+            if password == Config.ADMIN_PASSWORD:
 
                 st.session_state.admin_authenticated = True
 
