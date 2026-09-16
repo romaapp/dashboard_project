@@ -1,6 +1,6 @@
 import sqlite3
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import streamlit as st
 import os
 
@@ -8,8 +8,26 @@ import os
 class DashboardLogger:
     """Класс для логирования действий пользователей в SQLite"""
 
-    def __init__(self, db_path="logs/dashboard_logs.db"):
+    def __init__(self, db_path=None):
+
+        # ========================================================
+        # ПУТЬ К БАЗЕ ДАННЫХ
+        # ========================================================
+
+        if db_path is None:
+
+            project_dir = os.path.dirname(
+                os.path.abspath(__file__)
+            )
+
+            db_path = os.path.join(
+                project_dir,
+                "logs",
+                "dashboard_logs.db"
+            )
+
         self.db_path = db_path
+
         self._init_db()
 
     # ============================================================
@@ -19,79 +37,192 @@ class DashboardLogger:
     def _init_db(self):
         """Создает таблицы для логов, если их нет"""
 
-        os.makedirs(
-            os.path.dirname(self.db_path),
-            exist_ok=True
-        )
+        try:
 
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS user_actions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                ip_address TEXT,
-                user_agent TEXT,
-                action TEXT,
-                report_name TEXT,
-                params TEXT,
-                session_id TEXT
+            os.makedirs(
+                os.path.dirname(
+                    os.path.abspath(self.db_path)
+                ),
+                exist_ok=True
             )
-        """)
 
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS user_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT UNIQUE,
-                ip_address TEXT,
-                first_visit TEXT,
-                last_visit TEXT,
-                visit_count INTEGER DEFAULT 1
+            conn = sqlite3.connect(
+                self.db_path
             )
-        """)
 
-        conn.commit()
-        conn.close()
+            cursor = conn.cursor()
+
+            # ----------------------------------------------------
+            # ДЕЙСТВИЯ ПОЛЬЗОВАТЕЛЕЙ
+            # ----------------------------------------------------
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_actions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    ip_address TEXT,
+                    user_agent TEXT,
+                    action TEXT,
+                    report_name TEXT,
+                    params TEXT,
+                    session_id TEXT
+                )
+            """)
+
+            # ----------------------------------------------------
+            # СЕССИИ ПОЛЬЗОВАТЕЛЕЙ
+            # ----------------------------------------------------
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT UNIQUE,
+                    ip_address TEXT,
+                    first_visit TEXT,
+                    last_visit TEXT,
+                    visit_count INTEGER DEFAULT 1
+                )
+            """)
+
+            conn.commit()
+            conn.close()
+
+            print(
+                f"LOGGER: database initialized: "
+                f"{os.path.abspath(self.db_path)}"
+            )
+
+        except Exception as e:
+
+            print(
+                f"LOGGER INIT ERROR: {e}"
+            )
+
+            print(
+                f"LOGGER DB: "
+                f"{os.path.abspath(self.db_path)}"
+            )
 
     # ============================================================
     # ПОЛУЧЕНИЕ IP-АДРЕСА
     # ============================================================
 
     def _get_client_ip(self):
-        """Получает IP-адрес клиента из HTTP-заголовков Streamlit"""
+        """
+        Получает IP текущего пользователя
+        непосредственно из WebSocket Streamlit.
+        """
 
         try:
 
-            headers = st.context.headers
-
-            # Если приложение работает за proxy
-            forwarded_for = headers.get(
-                "X-Forwarded-For"
+            from streamlit.runtime.scriptrunner import (
+                get_script_run_ctx
             )
 
-            if forwarded_for:
+            from streamlit.runtime import get_instance
 
-                # Может содержать несколько IP:
-                # client, proxy1, proxy2
-                return forwarded_for.split(",")[0].strip()
+            # ----------------------------------------------------
+            # Получаем текущий Streamlit context
+            # ----------------------------------------------------
 
-            # Некоторые proxy используют X-Real-IP
-            real_ip = headers.get(
-                "X-Real-IP"
+            ctx = get_script_run_ctx()
+
+            if ctx is None:
+
+                print(
+                    "LOGGER IP: Streamlit context not found"
+                )
+
+                return "unknown"
+
+            # ----------------------------------------------------
+            # Получаем runtime
+            # ----------------------------------------------------
+
+            runtime = get_instance()
+
+            # ----------------------------------------------------
+            # Получаем информацию о текущей сессии
+            # ----------------------------------------------------
+
+            session_info = (
+                runtime._session_mgr.get_session_info(
+                    ctx.session_id
+                )
             )
 
-            if real_ip:
-                return real_ip.strip()
+            if session_info is None:
 
-            return "unknown"
+                print(
+                    "LOGGER IP: session info not found"
+                )
 
-        except Exception:
+                return "unknown"
+
+            # ----------------------------------------------------
+            # Получаем клиента
+            # ----------------------------------------------------
+
+            client = session_info.client
+
+            if client is None:
+
+                print(
+                    "LOGGER IP: client not found"
+                )
+
+                return "unknown"
+
+            # ----------------------------------------------------
+            # Получаем WebSocket
+            # ----------------------------------------------------
+
+            websocket = getattr(
+                client,
+                "_websocket",
+                None
+            )
+
+            if websocket is None:
+
+                print(
+                    "LOGGER IP: websocket not found"
+                )
+
+                return "unknown"
+
+            # ----------------------------------------------------
+            # Получаем адрес клиента
+            # ----------------------------------------------------
+
+            remote_client = websocket.client
+
+            if remote_client is None:
+
+                print(
+                    "LOGGER IP: remote client not found"
+                )
+
+                return "unknown"
+
+            client_ip = remote_client.host
+
+            print(
+                f"LOGGER IP: {client_ip}"
+            )
+
+            return client_ip
+
+        except Exception as e:
+
+            print(
+                f"LOGGER IP ERROR: {e}"
+            )
 
             return "unknown"
 
     # ============================================================
-    # ЛОГИРОВАНИЕ
+    # ЛОГИРОВАНИЕ ДЕЙСТВИЯ
     # ============================================================
 
     def log_action(
@@ -102,7 +233,13 @@ class DashboardLogger:
     ):
         """Логирует действие пользователя"""
 
+        conn = None
+
         try:
+
+            # ----------------------------------------------------
+            # Подключение к БД
+            # ----------------------------------------------------
 
             conn = sqlite3.connect(
                 self.db_path
@@ -111,10 +248,14 @@ class DashboardLogger:
             cursor = conn.cursor()
 
             # ----------------------------------------------------
-            # Данные пользователя
+            # IP пользователя
             # ----------------------------------------------------
 
             ip_address = self._get_client_ip()
+
+            # ----------------------------------------------------
+            # User-Agent
+            # ----------------------------------------------------
 
             try:
 
@@ -127,13 +268,17 @@ class DashboardLogger:
 
                 user_agent = "unknown"
 
+            # ----------------------------------------------------
+            # Session ID
+            # ----------------------------------------------------
+
             session_id = st.session_state.get(
                 "session_id",
                 "unknown"
             )
 
             # ----------------------------------------------------
-            # Текущее время
+            # Время
             # ----------------------------------------------------
 
             timestamp = datetime.now().strftime(
@@ -141,17 +286,20 @@ class DashboardLogger:
             )
 
             # ----------------------------------------------------
-            # Параметры в JSON
+            # Параметры
             # ----------------------------------------------------
 
             params_json = (
-                json.dumps(params, ensure_ascii=False)
+                json.dumps(
+                    params,
+                    ensure_ascii=False
+                )
                 if params
                 else None
             )
 
             # ----------------------------------------------------
-            # Записываем действие
+            # Запись действия
             # ----------------------------------------------------
 
             cursor.execute("""
@@ -177,7 +325,21 @@ class DashboardLogger:
             ))
 
             # ----------------------------------------------------
-            # Обновляем / создаем сессию
+            # Проверяем, что INSERT действительно выполнен
+            # ----------------------------------------------------
+
+            inserted_id = cursor.lastrowid
+
+            print(
+                f"LOGGER INSERT: "
+                f"id={inserted_id}, "
+                f"action={action}, "
+                f"ip={ip_address}, "
+                f"session={session_id}"
+            )
+
+            # ----------------------------------------------------
+            # Обновляем информацию о сессии
             # ----------------------------------------------------
 
             if session_id != "unknown":
@@ -206,15 +368,129 @@ class DashboardLogger:
                     ip_address
                 ))
 
+            # ----------------------------------------------------
+            # Фиксируем транзакцию
+            # ----------------------------------------------------
+
             conn.commit()
-            conn.close()
+
+            print(
+                f"LOGGER COMMIT OK: "
+                f"{os.path.abspath(self.db_path)}"
+            )
 
         except Exception as e:
 
-            # Ошибка логирования не должна ломать дашборд
             print(
-                f"Logging error: {e}"
+                "========================================"
             )
+
+            print(
+                f"LOGGER ERROR: {e}"
+            )
+
+            print(
+                f"LOGGER DB: "
+                f"{os.path.abspath(self.db_path)}"
+            )
+
+            print(
+                f"LOGGER ACTION: {action}"
+            )
+
+            print(
+                "========================================"
+            )
+
+        finally:
+
+            if conn is not None:
+
+                try:
+                    conn.close()
+
+                except Exception:
+                    pass
+
+    # ============================================================
+    # ПОЛЬЗОВАТЕЛИ ОНЛАЙН
+    # ============================================================
+
+    def get_online_users(self, minutes=5):
+        """
+        Получает пользователей, которые были активны
+        за последние N минут.
+
+        Возвращает:
+        [
+            (ip_address, last_visit),
+            ...
+        ]
+        """
+
+        conn = None
+
+        try:
+
+            conn = sqlite3.connect(
+                self.db_path
+            )
+
+            cursor = conn.cursor()
+
+            # ----------------------------------------------------
+            # Время, после которого пользователь считается
+            # неактивным
+            # ----------------------------------------------------
+
+            cutoff = (
+                datetime.now()
+                - timedelta(minutes=minutes)
+            ).strftime("%Y-%m-%d %H:%M:%S")
+
+
+            # ----------------------------------------------------
+            # Получаем последнюю активность по каждому IP
+            # ----------------------------------------------------
+
+            cursor.execute("""
+                SELECT
+                    ip_address,
+                    MAX(last_visit) AS last_visit
+
+                FROM user_sessions
+
+                WHERE last_visit >= ?
+                AND ip_address IS NOT NULL
+                AND ip_address NOT IN (
+                    '127.0.0.1',
+                    'unknown'
+                )
+
+                GROUP BY ip_address
+
+                ORDER BY last_visit DESC
+            """, (
+                cutoff,
+            ))
+
+            online_users = cursor.fetchall()
+
+            return online_users
+
+        except Exception as e:
+
+            print(
+                f"Ошибка получения онлайн пользователей: {e}"
+            )
+
+            return []
+
+        finally:
+
+            if conn:
+
+                conn.close()
 
     # ============================================================
     # СТАТИСТИКА
@@ -223,111 +499,171 @@ class DashboardLogger:
     def get_statistics(self):
         """Получает статистику из логов"""
 
-        conn = sqlite3.connect(
-            self.db_path
-        )
+        conn = None
 
-        cursor = conn.cursor()
+        try:
 
-        # --------------------------------------------------------
-        # Общая статистика
-        # --------------------------------------------------------
+            conn = sqlite3.connect(
+                self.db_path
+            )
 
-        cursor.execute(
-            "SELECT COUNT(*) FROM user_actions"
-        )
+            cursor = conn.cursor()
 
-        total_actions = cursor.fetchone()[0]
+            # ----------------------------------------------------
+            # Всего действий
+            # ----------------------------------------------------
 
-        cursor.execute("""
-            SELECT COUNT(DISTINCT session_id)
-            FROM user_actions
-            WHERE session_id IS NOT NULL
-            AND session_id != 'unknown'
-        """)
+            cursor.execute(
+                "SELECT COUNT(*) FROM user_actions"
+            )
 
-        unique_visitors = cursor.fetchone()[0]
+            total_actions = cursor.fetchone()[0]
 
-        cursor.execute("""
-            SELECT COUNT(DISTINCT session_id)
-            FROM user_sessions
-            WHERE session_id IS NOT NULL
-              AND session_id != 'unknown'
-        """)
+            # ----------------------------------------------------
+            # Уникальные посетители
+            # ----------------------------------------------------
 
-        unique_sessions = cursor.fetchone()[0]
+            cursor.execute("""
+                SELECT COUNT(DISTINCT ip_address)
+                FROM user_actions
+                WHERE ip_address IS NOT NULL
+                AND ip_address NOT IN ('unknown', '127.0.0.1')
+            """)
 
-        # --------------------------------------------------------
-        # Популярные отчеты
-        # --------------------------------------------------------
+            unique_visitors = cursor.fetchone()[0]
 
-        cursor.execute("""
-            SELECT
-                report_name,
-                COUNT(*) as count
+            # ----------------------------------------------------
+            # Уникальные сессии
+            # ----------------------------------------------------
 
-            FROM user_actions
+            cursor.execute("""
+                SELECT COUNT(DISTINCT session_id)
+                FROM user_sessions
+                WHERE session_id IS NOT NULL
+                AND session_id != 'unknown'
+            """)
 
-            WHERE action = 'view_report'
-              AND report_name IS NOT NULL
+            unique_sessions = cursor.fetchone()[0]
 
-            GROUP BY report_name
+            # ----------------------------------------------------
+            # Действия сегодня
+            # ----------------------------------------------------
 
-            ORDER BY count DESC
-        """)
+            today = datetime.now().strftime("%Y-%m-%d")
 
-        popular_reports = cursor.fetchall()
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM user_actions
+                WHERE timestamp LIKE ?
+            """, (today + "%",))
 
-        # --------------------------------------------------------
-        # Активность по дням
-        # --------------------------------------------------------
+            today_actions = cursor.fetchone()[0]
 
-        cursor.execute("""
-            SELECT
-                DATE(timestamp) as date,
-                COUNT(*) as count
+            # ----------------------------------------------------
+            # Популярные отчеты
+            # ----------------------------------------------------
 
-            FROM user_actions
+            cursor.execute("""
+                SELECT
+                    report_name,
+                    COUNT(*) as count
 
-            GROUP BY DATE(timestamp)
+                FROM user_actions
 
-            ORDER BY date DESC
+                WHERE action = 'view_report'
+                AND report_name IS NOT NULL
 
-            LIMIT 30
-        """)
+                GROUP BY report_name
 
-        daily_activity = cursor.fetchall()
+                ORDER BY count DESC
+            """)
 
-        # --------------------------------------------------------
-        # Последние действия
-        # --------------------------------------------------------
+            popular_reports = cursor.fetchall()
 
-        cursor.execute("""
-            SELECT
-                timestamp,
-                ip_address,
-                action,
-                report_name
+            # ----------------------------------------------------
+            # Активность по дням
+            # ----------------------------------------------------
 
-            FROM user_actions
+            cursor.execute("""
+                SELECT
+                    DATE(timestamp) as date,
+                    COUNT(*) as count
 
-            ORDER BY timestamp DESC
+                FROM user_actions
 
-            LIMIT 50
-        """)
+                GROUP BY DATE(timestamp)
 
-        recent_actions = cursor.fetchall()
+                ORDER BY date DESC
 
-        conn.close()
+                LIMIT 30
+            """)
 
-        return {
-            "total_actions": total_actions,
-            "unique_visitors": unique_visitors,
-            "unique_sessions": unique_sessions,
-            "popular_reports": popular_reports,
-            "daily_activity": daily_activity,
-            "recent_actions": recent_actions
-        }
+            daily_activity = cursor.fetchall()
+
+            # ----------------------------------------------------
+            # Последние действия
+            # ----------------------------------------------------
+
+            cursor.execute("""
+                SELECT
+                    timestamp,
+                    ip_address,
+                    action,
+                    report_name
+
+                FROM user_actions
+
+                ORDER BY timestamp DESC
+
+                LIMIT 50
+            """)
+
+            recent_actions = cursor.fetchall()
+
+            # ----------------------------------------------------
+            # Возвращаем статистику
+            # ----------------------------------------------------
+
+            return {
+                "total_actions": total_actions,
+                "unique_visitors": unique_visitors,
+                "unique_sessions": unique_sessions,
+                "today_actions": today_actions,
+                "popular_reports": popular_reports,
+                "daily_activity": daily_activity,
+                "recent_actions": recent_actions
+            }
+
+        except Exception as e:
+
+            print(
+                f"LOGGER STATISTICS ERROR: {e}"
+            )
+
+            print(
+                f"LOGGER DB: "
+                f"{os.path.abspath(self.db_path)}"
+            )
+
+            return {
+                "total_actions": 0,
+                "unique_visitors": 0,
+                "unique_sessions": 0,
+                "today_actions": 0,
+                "popular_reports": [],
+                "daily_activity": [],
+                "recent_actions": []
+            }
+
+        finally:
+
+            if conn is not None:
+
+                try:
+                    conn.close()
+
+                except Exception:
+                    pass
 
 
 # ============================================================
@@ -335,4 +671,3 @@ class DashboardLogger:
 # ============================================================
 
 logger = DashboardLogger()
-
