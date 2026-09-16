@@ -50,7 +50,7 @@ group by d.deliverysubtype
     'Статистика по отобранным и неотобранным артикулам': """
 with mh as (
 	select count(hm.material_id) as x,
-	count(distinct hm.material_id) as y
+	count(distinct hm.row_id) as y
 	from hdr_materialpicking hm
 	where hm.finishdate::date = current_date
 	)
@@ -267,6 +267,32 @@ and d.deliverytype_id = 7
 and d.deliverysubtype is not null
 and td.sys_pickedbasequantity is null
 group by d.deliverydate::date
+    """,
+
+	    'Объём-расчёт количества мест': """
+select
+	d.deliverydate::date as "Дата отгрузки",
+	d.debtorpartnername as "Контрагент",
+	td.materialname as "Артикул",
+	sum(td.quantity) over (partition by d.debtorpartnername, td.materialname) as "Количество",
+	(sum(td.quantity) over (partition by d.debtorpartnername, td.materialname))*mu.nettoweight as "Вес",
+	(sum(td.quantity) over (partition by d.debtorpartnername, td.materialname))*mu.unitvolume as "Объем",
+	CAST(ROUND(mu.length, 3) AS VARCHAR) || '/' || CAST(ROUND(mu.width, 3) AS VARCHAR) || '/' || CAST(ROUND(mu.height, 3) AS VARCHAR) as "ВГХ(д,ш,в)"
+from
+	hdr_deliveryrequest d
+join tbl_deliveryrequestmaterials as td on
+	td.transaction_id = d.transaction_id
+join materialunits as mu on
+	td.materialunit_id = mu.tid
+join materials as m on
+	mu.material_id = m.tid
+--Проверка на вычерки и тип поставки
+where  td.shortagereason_id is null
+and d.deliverytype_id = 7
+and d.deliverysubtype is not null
+and m.materialgroup_id not in (162,163,164,164,165,166)
+and d.deliverydate::date BETWEEN (%s)::DATE AND %s::DATE	
+order by td.materialname asc
     """
 
 }
@@ -350,7 +376,7 @@ group by d.deliverysubtype
     'Статистика по отобранным и неотобранным артикулам': """
 with mh as (
 	select count(hm.material_id) as x,
-	count(distinct hm.material_id) as y
+	count(distinct hm.row_id) as y
 	from hdr_materialpicking hm
 	where hm.finishdate::date = current_date
 	)
