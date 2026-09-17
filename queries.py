@@ -341,6 +341,29 @@ and d.deliverydate::date BETWEEN (%s)::DATE AND %s::DATE
 group by tmp.deldate,
 	tmp.dpn
 order by tmp.dpn
+    """,
+
+	    'Артикулы, отбирающиеся упаковками': """
+select
+	distinct mu.material_id as "ID артикула",
+	m.nameen as "Артикул",
+	m.nameru as "Наименование",
+	count(td.tid) over (partition by mu.material_id) as "Количество отборов"
+from
+	hdr_deliveryrequest d
+join tbl_deliveryrequestmaterials as td on
+	td.transaction_id = d.transaction_id
+join materialunits as mu on
+	td.materialunit_id = mu.tid
+join materials as m on
+	mu.material_id = m.tid
+--Проверка на вычерки и тип поставки
+where  td.shortagereason_id is null
+and d.deliverytype_id = 7
+and d.deliverysubtype is not null
+and mu.unitkoeff > 1
+and d.deliverydate::date BETWEEN (%s)::DATE AND %s::DATE
+order by m.nameen
     """
 
 }
