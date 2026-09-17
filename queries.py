@@ -269,7 +269,7 @@ and td.sys_pickedbasequantity is null
 group by d.deliverydate::date
     """,
 
-	    'Объём-расчёт количества мест': """
+	    'Расчёт количества мест с ВГХ': """
 select
 	d.deliverydate::date as "Дата отгрузки",
 	d.debtorpartnername as "Контрагент",
@@ -277,7 +277,12 @@ select
 	sum(td.quantity) over (partition by d.debtorpartnername, td.materialname) as "Количество",
 	(sum(td.quantity) over (partition by d.debtorpartnername, td.materialname))*mu.nettoweight as "Вес",
 	(sum(td.quantity) over (partition by d.debtorpartnername, td.materialname))*mu.unitvolume as "Объем",
-	CAST(ROUND(mu.length, 3) AS VARCHAR) || '/' || CAST(ROUND(mu.width, 3) AS VARCHAR) || '/' || CAST(ROUND(mu.height, 3) AS VARCHAR) as "ВГХ(д,ш,в)"
+	CAST(ROUND(mu.length, 3) AS VARCHAR) || '/' || CAST(ROUND(mu.width, 3) AS VARCHAR) || '/' || CAST(ROUND(mu.height, 3) AS VARCHAR) as "ВГХ(д,ш,в)",
+	case when 
+	mu.length > 7 or mu.width > 7 or mu.height > 7 or mu.length = 0.001 or mu.width = 0.001 or mu.length is null or mu.width is null or mu.height is null
+	then 'Проверить ВГХ'
+	else ''
+	end as "Верные ВГХ?"
 from
 	hdr_deliveryrequest d
 join tbl_deliveryrequestmaterials as td on
@@ -290,9 +295,52 @@ join materials as m on
 where  td.shortagereason_id is null
 and d.deliverytype_id = 7
 and d.deliverysubtype is not null
-and m.materialgroup_id not in (162,163,164,164,165,166)
 and d.deliverydate::date BETWEEN (%s)::DATE AND %s::DATE	
 order by td.materialname asc
+    """,
+
+	    'Объём-расчёт количества мест': """
+select tmp.deldate as "Дата отгрузки",
+	tmp.dpn as "Контрагент",
+	ROUND(SUM(tmp.wght),2) as "Вес",
+	ROUND(SUM(tmp.vol),4) as "Объем",
+	CEIL(SUM(tmp.wght)/750) as "Паллет по весу",
+	CEIL(SUM(tmp.vol)/1.344) as "Паллет по объему",
+	CEIL(SUM(tmp.vol)/1.344)+max(tmp.pog)::numeric as "По объему с погонажом"
+	from(
+select
+	d.deliverydate::date as deldate,
+	d.debtorpartnername as dpn,
+	td.materialname as art,
+	sum(td.quantity) over (partition by d.debtorpartnername, td.materialname) as qty,
+	(sum(td.quantity) over (partition by d.debtorpartnername, td.materialname))*mu.nettoweight as wght,
+	(sum(td.quantity) over (partition by d.debtorpartnername, td.materialname))*mu.unitvolume as vol,
+	m.materialgroup_id,
+	case 
+	when m.materialgroup_id = '162' then '5'
+	when m.materialgroup_id = '165' then '5'
+	when m.materialgroup_id = '166' then '4'
+	when m.materialgroup_id = '163' then '3'
+	when m.materialgroup_id = '164' then '2'
+	else '0' 
+	end as pog
+from
+	hdr_deliveryrequest d
+join tbl_deliveryrequestmaterials as td on
+	td.transaction_id = d.transaction_id
+join materialunits as mu on
+	td.materialunit_id = mu.tid
+join materials as m on
+	mu.material_id = m.tid
+--Проверка на вычерки и тип поставки
+where  td.shortagereason_id is null
+and d.deliverytype_id = 7
+and d.deliverysubtype is not null
+and d.deliverydate::date BETWEEN (%s)::DATE AND %s::DATE
+) as tmp
+group by tmp.deldate,
+	tmp.dpn
+order by tmp.dpn
     """
 
 }
