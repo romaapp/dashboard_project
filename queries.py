@@ -364,6 +364,145 @@ and d.deliverysubtype is not null
 and mu.unitkoeff > 1
 and d.deliverydate::date BETWEEN (%s)::DATE AND %s::DATE
 order by m.nameen
+    """,
+
+	    'Производительность комплектации': """
+WITH operations AS (
+    SELECT
+        mp.targetlocationname AS ФИО,
+        mp.sourcelocationname,
+        coalesce(case when dbo.MaterialUnitPickingGroup(mp.MaterialUnit_id) = 'QW' then mp.NettoWeight else null end, mp.BaseQuantity / mu.UnitKoeff * mu.NettoWeight) as вес,
+        mp.BaseQuantity / mu.UnitKoeff * mu.UnitVolume as объём,
+        mp.taskdate AS начало_операции,
+        mp.finishdate AS окончание_операции,
+        mp.material_id as артикула,
+        mp.finishdate - mp.taskdate AS время_операции,
+        LAG(mp.finishdate) OVER (
+            PARTITION BY mp.targetlocationname
+            ORDER BY mp.taskdate, mp.finishdate
+        ) AS окончание_предыдущей_операции,
+        CASE 
+            WHEN tz.nameru IN ('Зона отбора с фронтальных стеллажей (13)', N'Зона хранения и отбора ЛВЖ', N'Зона хранения крупногабарита (3)') THEN 'Фронт'
+            WHEN tz.nameru IN (N'30.Зона отбора погонажа 2м', N'28.Зона отбора погонажа 3м', N'36.Зона отбора погонажа 4м', N'35.Зона отбора погонажа 5м', N'26.Зона отбора погонажа 6м', N'37.Зона отбора погонажа MIX', N'Зона хранения и отбора погонажа (5)') THEN 'Погонаж'
+            WHEN tz.nameru IN (N'Мезонин, 1 этаж, блок М1, зона 1', N'Мезонин, 1 этаж, блок М1, зона 2', N'Мезонин, 1 этаж, блок М1, зона 3', N'Мезонин, 1 этаж, блок М2, зона 1', N'Мезонин, 1 этаж, блок М2, зона 2', N'Мезонин, 1 этаж, блок М2, зона 3') THEN 'Мезонин'
+            ELSE 'Другое'
+        END AS зона
+    FROM hdr_materialpicking mp
+    JOIN locations l ON mp.sourcelocation_id = l.tid
+    JOIN technozones tz ON l.technozone_id = tz.tid
+    JOIN Materials m ON m.tid = mp.material_id
+    JOIN MaterialUnits mu ON mp.AlternateMaterialUnit_id = mu.tid
+    JOIN Units u ON u.tid = mu.unit_id AND u.nameru = mp.alternatematerialunitname
+    WHERE tz.nameru in( 'Зона отбора с фронтальных стеллажей (13)',N'30.Зона отбора погонажа 2м',N'28.Зона отбора погонажа 3м',N'36.Зона отбора погонажа 4м',
+       N'35.Зона отбора погонажа 5м',N'26.Зона отбора погонажа 6м',N'37.Зона отбора погонажа MIX',N'Зона хранения и отбора погонажа (5)',
+       N'Мезонин, 1 этаж, блок М1, зона 1',N'Мезонин, 1 этаж, блок М1, зона 2',N'Мезонин, 1 этаж, блок М1, зона 3',N'Мезонин, 
+       1 этаж, блок М2, зона 1',N'Мезонин, 1 этаж, блок М2, зона 2',N'Мезонин, 1 этаж, блок М2, зона 3',N'Зона хранения и отбора ЛВЖ',
+       N'Зона хранения крупногабарита (3)' ,N'Мезонин, 1 этаж, блок М2, зона 1')
+	  AND mp.finishdate::date BETWEEN  (%s)::TIMESTAMP AND %s::TIMESTAMP
+	      AND mp.taskdate IS NOT NULL
+      AND mp.finishdate IS NOT NULL
+      AND mp.targetlocationname IS NOT NULL
+    GROUP BY 
+        mp.targetlocationname,
+        mp.sourcelocationname,
+        mp.nettoweight,
+        mp.basequantity,
+        mp.taskdate,
+        mp.finishdate,
+        mp.material_id,
+        mp.materialunit_id,
+        mu.UnitKoeff,
+        mu.NettoWeight,
+        mu.unitvolume,
+        CASE 
+            WHEN tz.nameru IN ('Зона отбора с фронтальных стеллажей (13)', N'Зона хранения и отбора ЛВЖ', N'Зона хранения крупногабарита (3)') THEN 'Фронт'
+            WHEN tz.nameru IN (N'30.Зона отбора погонажа 2м', N'28.Зона отбора погонажа 3м', N'36.Зона отбора погонажа 4м', N'35.Зона отбора погонажа 5м', N'26.Зона отбора погонажа 6м', N'37.Зона отбора погонажа MIX', N'Зона хранения и отбора погонажа (5)') THEN 'Погонаж'
+            WHEN tz.nameru IN (N'Мезонин, 1 этаж, блок М1, зона 1', N'Мезонин, 1 этаж, блок М1, зона 2', N'Мезонин, 1 этаж, блок М1, зона 3', N'Мезонин, 1 этаж, блок М2, зона 1', N'Мезонин, 1 этаж, блок М2, зона 2', N'Мезонин, 1 этаж, блок М2, зона 3') THEN 'Мезонин'
+            ELSE 'Другое'
+        END
+),
+operations_with_pause AS (
+    SELECT
+        ФИО,
+        sourcelocationname,
+        начало_операции,
+        окончание_операции,
+        время_операции,
+        артикула,
+        вес,
+        объём,
+        зона,
+        CASE
+            WHEN окончание_предыдущей_операции IS NULL THEN INTERVAL '0'
+            WHEN начало_операции > окончание_предыдущей_операции THEN начало_операции - окончание_предыдущей_операции
+            ELSE INTERVAL '0'
+        END AS время_простоя
+    FROM operations
+)
+SELECT
+    ФИО,
+    COUNT(sourcelocationname) AS "К-во операций",
+                ROUND(
+        COUNT(sourcelocationname)::numeric
+        /
+        NULLIF(
+            EXTRACT(
+                EPOCH FROM (
+                    (MAX(окончание_операции) - MIN(начало_операции))
+                    - COALESCE(
+                        SUM(
+                            CASE
+                                WHEN время_простоя > INTERVAL '10 minutes' THEN время_простоя
+                                ELSE INTERVAL '0'
+                            END
+                        ),
+                        INTERVAL '0'
+                    )
+                )
+            ) / 3600.0,
+            0
+        ),
+        2
+    ) AS "Производительность по операциям",
+    round(sum(вес)) AS "Вес",
+    ROUND(SUM(объём), 2) AS "Объём",
+    COUNT(distinct (sourcelocationname, артикула,CAST(окончание_операции AS date))) AS "К-во артикулов",
+                                 ROUND(
+        COUNT(distinct (sourcelocationname, артикула,CAST(окончание_операции AS date)))::numeric
+        /
+        NULLIF(
+            EXTRACT(
+                EPOCH FROM (
+                    (MAX(окончание_операции) - MIN(начало_операции))
+                    - COALESCE(
+                        SUM(
+                            CASE
+                                WHEN время_простоя > INTERVAL '10 minutes' THEN время_простоя
+                                ELSE INTERVAL '0'
+                            END
+                        ),
+                        INTERVAL '0'
+                    )
+                )
+            ) / 3600.0,
+            0
+        ),
+        2
+    ) AS "Производительность по артикулам",
+    зона as "Зона",
+  TO_CHAR(
+    SUM(
+        CASE
+            WHEN время_простоя > INTERVAL '10 minutes' THEN время_простоя
+            ELSE INTERVAL '0'
+        END
+    ),
+    'HH24:MI:SS'
+) AS "Время простоя более 10 минут",
+    COUNT(*) FILTER (WHERE время_простоя > INTERVAL '10 minutes') AS "К-во простоев более 10 минут"
+FROM operations_with_pause
+GROUP BY ФИО, Зона
+ORDER BY "К-во операций" desc
     """
 
 }
