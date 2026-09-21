@@ -344,10 +344,10 @@ order by tmp.dpn
     """,
 
 	    'Артикулы, отбирающиеся упаковками': """
-select
+	select
 	distinct mu.material_id as "ID артикула",
-	m.nameen as "Артикул",
-	m.nameru as "Наименование",
+		m.nameen as "Артикул",
+		m.nameru as "Наименование",
 	count(td.tid) over (partition by mu.material_id) as "Количество отборов"
 from
 	hdr_deliveryrequest d
@@ -361,7 +361,7 @@ join materials as m on
 where  td.shortagereason_id is null
 and d.deliverytype_id = 7
 and d.deliverysubtype is not null
-and mu.unitkoeff > 1
+and (mu.unitkoeff > 1 or m.nameru like '%%00 штук%%')
 and d.deliverydate::date BETWEEN (%s)::DATE AND %s::DATE
 order by m.nameen
     """,
