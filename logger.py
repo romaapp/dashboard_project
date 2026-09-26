@@ -448,7 +448,6 @@ class DashboardLogger:
                 - timedelta(minutes=minutes)
             ).strftime("%Y-%m-%d %H:%M:%S")
 
-
             # ----------------------------------------------------
             # Получаем последнюю активность по каждому IP
             # ----------------------------------------------------
@@ -527,7 +526,10 @@ class DashboardLogger:
                 SELECT COUNT(DISTINCT ip_address)
                 FROM user_actions
                 WHERE ip_address IS NOT NULL
-                AND ip_address NOT IN ('unknown', '127.0.0.1')
+                AND ip_address NOT IN (
+                    'unknown',
+                    '127.0.0.1'
+                )
             """)
 
             unique_visitors = cursor.fetchone()[0]
@@ -549,15 +551,38 @@ class DashboardLogger:
             # Действия сегодня
             # ----------------------------------------------------
 
-            today = datetime.now().strftime("%Y-%m-%d")
+            today = datetime.now().strftime(
+                "%Y-%m-%d"
+            )
 
             cursor.execute("""
                 SELECT COUNT(*)
                 FROM user_actions
                 WHERE timestamp LIKE ?
-            """, (today + "%",))
+            """, (
+                today + "%",
+            ))
 
             today_actions = cursor.fetchone()[0]
+
+            # ----------------------------------------------------
+            # Посетители сегодня
+            # ----------------------------------------------------
+
+            cursor.execute("""
+                SELECT COUNT(DISTINCT ip_address)
+                FROM user_actions
+                WHERE timestamp LIKE ?
+                AND ip_address IS NOT NULL
+                AND ip_address NOT IN (
+                    'unknown',
+                    '127.0.0.1'
+                )
+            """, (
+                today + "%",
+            ))
+
+            today_visitors = cursor.fetchone()[0]
 
             # ----------------------------------------------------
             # Популярные отчеты
@@ -629,6 +654,7 @@ class DashboardLogger:
                 "unique_visitors": unique_visitors,
                 "unique_sessions": unique_sessions,
                 "today_actions": today_actions,
+                "today_visitors": today_visitors,
                 "popular_reports": popular_reports,
                 "daily_activity": daily_activity,
                 "recent_actions": recent_actions
@@ -650,6 +676,7 @@ class DashboardLogger:
                 "unique_visitors": 0,
                 "unique_sessions": 0,
                 "today_actions": 0,
+                "today_visitors": 0,
                 "popular_reports": [],
                 "daily_activity": [],
                 "recent_actions": []
