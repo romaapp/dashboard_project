@@ -13,6 +13,7 @@ from suggestions import (
 )
 
 import os
+import sqlite3
 
 
 # ============================================================
@@ -27,6 +28,61 @@ st.set_page_config(
 )
 
 load_css()
+
+
+# ============================================================
+# ПОЛЬЗОВАТЕЛИ ПО ДНЯМ
+# ============================================================
+
+def get_daily_visitors():
+    """Получает количество уникальных посетителей по дням."""
+
+    conn = None
+
+    try:
+
+        conn = sqlite3.connect(
+            logger.db_path
+        )
+
+        df = pd.read_sql_query(
+            """
+            SELECT
+                DATE(timestamp) AS Дата,
+                COUNT(DISTINCT ip_address) AS Пользователей
+            FROM user_actions
+            WHERE ip_address IS NOT NULL
+            AND ip_address NOT IN (
+                'unknown',
+                '127.0.0.1'
+            )
+            GROUP BY DATE(timestamp)
+            ORDER BY Дата DESC
+            LIMIT 30
+            """,
+            conn
+        )
+
+        return df
+
+    except Exception as e:
+
+        print(
+            f"Ошибка получения пользователей по дням: {e}"
+        )
+
+        return pd.DataFrame(
+            columns=[
+                "Дата",
+                "Пользователей"
+            ]
+        )
+
+    finally:
+
+        if conn is not None:
+
+            conn.close()
 
 
 # ============================================================
@@ -95,16 +151,85 @@ def main():
 
 
     # ========================================================
-    # КНОПКА ВОЗВРАТА
+    # ПОЛУЧАЕМ ПРЕДЛОЖЕНИЯ
     # ========================================================
 
-    if st.button(
-        "⬅️ На главную"
-    ):
+    all_suggestions = get_suggestions(
+        "all"
+    )
 
-        st.switch_page(
-            "pages/Главная страница.py"
-        )
+
+    # ========================================================
+    # СЧИТАЕМ НОВЫЕ ПРЕДЛОЖЕНИЯ
+    # ========================================================
+
+    new_suggestions_count = sum(
+        1
+        for suggestion in all_suggestions
+        if not bool(suggestion[5])
+    )
+
+
+    # ========================================================
+    # КНОПКА ВОЗВРАТА + ИНДИКАТОР НОВЫХ ПРЕДЛОЖЕНИЙ
+    # ========================================================
+
+    col_home, col_spacer, col_suggestions = st.columns(
+        [1, 3, 2]
+    )
+
+
+    # --------------------------------------------------------
+    # НА ГЛАВНУЮ
+    # --------------------------------------------------------
+
+    with col_home:
+
+        if st.button(
+            "⬅️ На главную"
+        ):
+
+            st.switch_page(
+                "pages/Главная страница.py"
+            )
+
+
+    # --------------------------------------------------------
+    # НОВЫЕ ПРЕДЛОЖЕНИЯ
+    # --------------------------------------------------------
+
+    with col_suggestions:
+
+        if new_suggestions_count > 0:
+
+            st.markdown(
+                f"""
+                <div style="
+                    padding-top: 8px;
+                    font-size: 0.95rem;
+                ">
+                    💡 Новые предложения по развитию —
+                    <strong>{new_suggestions_count}</strong>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        else:
+
+            st.markdown(
+                """
+                <div style="
+                    padding-top: 8px;
+                    font-size: 0.95rem;
+                    opacity: 0.65;
+                ">
+                    💡 Новые предложения по развитию —
+                    нет
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
 
     # ========================================================
@@ -137,7 +262,7 @@ def main():
         # ВЕРХНИЕ МЕТРИКИ
         # ----------------------------------------------------
 
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
 
 
         with col1:
@@ -169,6 +294,14 @@ def main():
             st.metric(
                 "📅 Действий сегодня",
                 stats["today_actions"]
+            )
+
+
+        with col5:
+
+            st.metric(
+                "👤 Посетителей сегодня",
+                stats["today_visitors"]
             )
 
 
@@ -255,6 +388,10 @@ def main():
                 )
 
 
+                # --------------------------------------------
+                # АКТИВНОСТЬ ПО ДНЯМ
+                # --------------------------------------------
+
                 fig = px.line(
                     df_daily,
                     x="Дата",
@@ -286,15 +423,60 @@ def main():
                 )
 
 
+            # ------------------------------------------------
+            # ПОЛЬЗОВАТЕЛИ ПО ДНЯМ
+            # ------------------------------------------------
+
+            df_visitors = get_daily_visitors()
+
+
+            if not df_visitors.empty:
+
+                df_visitors["Дата"] = pd.to_datetime(
+                    df_visitors["Дата"]
+                )
+
+                df_visitors = df_visitors.sort_values(
+                    "Дата"
+                )
+
+
+                fig_visitors = px.line(
+                    df_visitors,
+                    x="Дата",
+                    y="Пользователей",
+                    title="Пользователи по дням (последние 30 дней)",
+                    template="plotly_white"
+                )
+
+                fig_visitors.update_layout(
+                    height=400
+                )
+
+
+                st.plotly_chart(
+                    fig_visitors,
+                    use_container_width=True
+                )
+
+
+                st.dataframe(
+                    df_visitors,
+                    use_container_width=True
+                )
+
+            else:
+
+                st.info(
+                    "Нет данных о пользователях"
+                )
+
+
     # ========================================================
     # ВКЛАДКА 2 — ПОЛЬЗОВАТЕЛИ ОНЛАЙН
     # ========================================================
 
     with tab_online:
-
-        st.subheader(
-            "🌐 Пользователи онлайн"
-        )
 
         st.caption(
             "Пользователь считается онлайн, "
@@ -313,10 +495,21 @@ def main():
 
 
         # ----------------------------------------------------
+        # ПОЛУЧАЕМ WINDOWS-ПОЛЬЗОВАТЕЛЕЙ
+        # ----------------------------------------------------
+
+        online_users_with_accounts = (
+            logger.get_online_users_with_accounts(
+                minutes=5
+            )
+        )
+
+
+        # ----------------------------------------------------
         # МЕТРИКИ
         # ----------------------------------------------------
 
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
 
 
         with col1:
@@ -335,6 +528,14 @@ def main():
             )
 
 
+        with col3:
+
+            st.metric(
+                "👤 Посетителей сегодня",
+                stats["today_visitors"]
+            )
+
+
         st.divider()
 
 
@@ -347,19 +548,34 @@ def main():
         )
 
 
-        if online_users:
+        if online_users_with_accounts:
 
             df_online = pd.DataFrame(
-                online_users,
-                columns=[
-                    "IP адрес",
-                    "Последняя активность"
-                ]
+                online_users_with_accounts
             )
 
 
             # -----------------------------------------------
-            # Форматируем время
+            # ПЕРЕИМЕНОВЫВАЕМ СТОЛБЦЫ
+            # -----------------------------------------------
+
+            df_online = df_online.rename(
+                columns={
+                    "ip_address": "IP адрес",
+                    "last_visit": "Последняя активность",
+                    "computer": "Компьютер",
+                    "username": "Пользователь",
+                    "session": "RDP сессия",
+                    "session_id": "ID сессии",
+                    "status": "Статус сессии",
+                    "idle": "Без активности",
+                    "login_time": "Вход в систему"
+                }
+            )
+
+
+            # -----------------------------------------------
+            # ФОРМАТИРУЕМ ВРЕМЯ
             # -----------------------------------------------
 
             df_online["Последняя активность"] = pd.to_datetime(
@@ -368,13 +584,47 @@ def main():
             )
 
 
-            df_online["Статус"] = "👁️‍🗨️ Онлайн"
+            # -----------------------------------------------
+            # СТАТУС ДАШБОРДА
+            # -----------------------------------------------
 
+            df_online.insert(
+                0,
+                "Статус",
+                "👁️‍🗨️ Онлайн"
+            )
+
+
+            # -----------------------------------------------
+            # СТАТУС WINDOWS-СЕССИИ
+            # -----------------------------------------------
+
+            df_online["Статус сессии"] = (
+                df_online["Статус сессии"]
+                .replace({
+                    "Активно": "🟢 Активно",
+                    "Active": "🟢 Активно",
+                    "Диск": "🟡 Диск",
+                    "Disc": "🟡 Диск"
+                })
+            )
+
+
+            # -----------------------------------------------
+            # ПОРЯДОК СТОЛБЦОВ
+            # -----------------------------------------------
 
             df_online = df_online[
                 [
                     "Статус",
+                    "Пользователь",
+                    "Компьютер",
                     "IP адрес",
+                    "Статус сессии",
+                    "RDP сессия",
+                    "ID сессии",
+                    "Без активности",
+                    "Вход в систему",
                     "Последняя активность"
                 ]
             ]
@@ -384,6 +634,13 @@ def main():
                 df_online,
                 use_container_width=True,
                 hide_index=True
+            )
+
+        elif online_users:
+
+            st.warning(
+                "Есть активные подключения, "
+                "но Windows-пользователей определить не удалось."
             )
 
         else:
@@ -424,7 +681,10 @@ def main():
                 ]
             )
 
-            df_actions["Действие"] = df_actions["Действие"].replace({
+
+            df_actions["Действие"] = df_actions[
+                "Действие"
+            ].replace({
                 "page_visit": "Посещение страницы",
                 "view_report": "Запуск отчета",
                 "visit": "Посещение страницы"
@@ -487,14 +747,7 @@ def main():
 
     with tab_suggestions:
 
-        st.subheader(
-            "💡 Предложения по развитию"
-        )
-
-
-        suggestions = get_suggestions(
-            "all"
-        )
+        suggestions = all_suggestions
 
 
         if not suggestions:
