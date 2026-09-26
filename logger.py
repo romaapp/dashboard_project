@@ -1,6 +1,9 @@
 import sqlite3
 import json
+import re
+import subprocess
 from datetime import datetime, timedelta
+
 import streamlit as st
 import os
 
@@ -325,7 +328,7 @@ class DashboardLogger:
             ))
 
             # ----------------------------------------------------
-            # Проверяем, что INSERT действительно выполнен
+            # Проверяем INSERT
             # ----------------------------------------------------
 
             inserted_id = cursor.lastrowid
@@ -413,6 +416,419 @@ class DashboardLogger:
                     pass
 
     # ============================================================
+    # ОПРЕДЕЛЕНИЕ ИМЕНИ КОМПЬЮТЕРА ПО IP
+    # ============================================================
+
+    def _resolve_hostname(self, ip_address):
+        """
+        Определяет имя компьютера по IP-адресу.
+
+        Например:
+
+            192.168.225.40
+                    ↓
+            fr-ts14.omco.ru
+
+        Возвращает короткое имя компьютера:
+            FR-TS14
+
+        Если определить имя не удалось:
+            возвращает IP.
+        """
+
+        try:
+
+            import socket
+
+            hostname = socket.gethostbyaddr(
+                ip_address
+            )[0]
+
+            if hostname:
+
+                short_hostname = hostname.split(
+                    "."
+                )[0]
+
+                print(
+                    f"LOGGER HOSTNAME: "
+                    f"{ip_address} -> {short_hostname}"
+                )
+
+                return short_hostname
+
+        except Exception as e:
+
+            print(
+                f"LOGGER HOSTNAME ERROR: "
+                f"{ip_address}: {e}"
+            )
+
+        return ip_address
+
+    # ============================================================
+    # ПОЛЬЗОВАТЕЛИ WINDOWS НА УДАЛЕННОМ КОМПЬЮТЕРЕ
+    # ============================================================
+
+    def get_windows_users(self, ip_address):
+        """
+        Получает пользователей Windows через quser.
+
+        Сначала определяется имя компьютера по IP,
+        затем выполняется:
+
+            quser /server:COMPUTER
+
+        Возвращает список словарей:
+
+        [
+            {
+                "username": "...",
+                "session": "...",
+                "session_id": "...",
+                "status": "Активно",
+                "idle": "...",
+                "login_time": "...",
+                "computer": "FR-TS14"
+            }
+        ]
+
+        """
+
+        computer_name = self._resolve_hostname(
+            ip_address
+        )
+
+        try:
+
+            # ----------------------------------------------------
+            # Выполняем quser
+            # ----------------------------------------------------
+
+            result = subprocess.run(
+                [
+                    "quser",
+                    "/server:" + computer_name
+                ],
+                capture_output=True,
+                text=True,
+                encoding="cp866",
+                errors="replace",
+                timeout=5
+            )
+
+            # ----------------------------------------------------
+            # Проверяем результат
+            # ----------------------------------------------------
+
+            if result.returncode != 0:
+
+                print(
+                    f"LOGGER QUSER ERROR: "
+                    f"{computer_name}: "
+                    f"{result.stderr}"
+                )
+
+                return []
+
+            output = result.stdout
+
+            print(
+                f"LOGGER QUSER OUTPUT "
+                f"{computer_name}:\n{output}"
+            )
+
+            users = []
+
+            # ----------------------------------------------------
+            # Разбираем строки
+            # ----------------------------------------------------
+
+            lines = output.splitlines()
+
+            for line in lines:
+
+                line = line.rstrip()
+
+                if not line:
+                    continue
+
+                # ------------------------------------------------
+                # Пропускаем заголовок
+                # ------------------------------------------------
+
+                if (
+                    "ПОЛЬЗОВАТЕЛЬ" in line
+                    or "USER" in line.upper()
+                ):
+                    continue
+
+                # ------------------------------------------------
+                # Пропускаем служебные строки
+                # ------------------------------------------------
+
+                if (
+                    "СЕАНС" in line
+                    or "SESSIONNAME" in line.upper()
+                ):
+                    continue
+
+                # ------------------------------------------------
+                # Если строка начинается с ">"
+                # это текущая сессия
+                # ------------------------------------------------
+
+                line = line.lstrip(">")
+
+                # ------------------------------------------------
+                # Разбираем по группам пробелов
+                # ------------------------------------------------
+
+                parts = re.split(
+                    r"\s{2,}",
+                    line.strip()
+                )
+
+                if len(parts) < 3:
+                    continue
+
+                # ------------------------------------------------
+                # Возможные форматы:
+                #
+                # username
+                # session
+                # id
+                # status
+                # idle
+                # login_time
+                #
+                # Для отключенной сессии session
+                # может отсутствовать.
+                # ------------------------------------------------
+
+                username = parts[0].strip()
+
+                if not username:
+                    continue
+
+                # ------------------------------------------------
+                # Исключаем служебные строки
+                # ------------------------------------------------
+
+                if username.lower() in [
+                    "services",
+                    "console",
+                    "rdp-tcp",
+                ]:
+
+                    continue
+
+                # ------------------------------------------------
+                # Определяем структуру строки
+                # ------------------------------------------------
+
+                session_name = ""
+                session_id = ""
+                status = ""
+                idle = ""
+                login_time = ""
+
+                # ------------------------------------------------
+                # Ищем числовой ID сессии
+                # ------------------------------------------------
+
+                id_index = None
+
+                for index, part in enumerate(parts):
+
+                    if re.fullmatch(
+                        r"\d+",
+                        part
+                    ):
+
+                        id_index = index
+                        break
+
+                if id_index is not None:
+
+                    session_id = parts[id_index]
+
+                    if id_index >= 1:
+
+                        session_name = parts[
+                            id_index - 1
+                        ]
+
+                    if id_index + 1 < len(parts):
+
+                        status = parts[
+                            id_index + 1
+                        ]
+
+                    if id_index + 2 < len(parts):
+
+                        idle = parts[
+                            id_index + 2
+                        ]
+
+                    if id_index + 3 < len(parts):
+
+                        login_time = " ".join(
+                            parts[id_index + 3:]
+                        )
+
+                # ------------------------------------------------
+                # Если ID не нашли
+                # ------------------------------------------------
+
+                else:
+
+                    continue
+
+                users.append({
+                    "username": username,
+                    "session": session_name,
+                    "session_id": session_id,
+                    "status": status,
+                    "idle": idle,
+                    "login_time": login_time,
+                    "computer": computer_name
+                })
+
+            print(
+                f"LOGGER QUSER USERS: "
+                f"{computer_name} -> {users}"
+            )
+
+            return users
+
+        except subprocess.TimeoutExpired:
+
+            print(
+                f"LOGGER QUSER TIMEOUT: "
+                f"{computer_name}"
+            )
+
+            return []
+
+        except FileNotFoundError:
+
+            print(
+                "LOGGER QUSER ERROR: "
+                "команда quser не найдена"
+            )
+
+            return []
+
+        except Exception as e:
+
+            print(
+                f"LOGGER QUSER ERROR: "
+                f"{computer_name}: {e}"
+            )
+
+            return []
+
+    # ============================================================
+    # ОНЛАЙН ПОЛЬЗОВАТЕЛИ + WINDOWS LOGIN
+    # ============================================================
+
+    def get_online_users_with_accounts(
+        self,
+        minutes=5
+    ):
+        """
+        Получает пользователей, которые сейчас используют
+        дашборд, и пытается определить их Windows login.
+
+        Возвращает:
+
+        [
+            {
+                "ip_address": "...",
+                "last_visit": "...",
+                "computer": "...",
+                "username": "...",
+                "session": "...",
+                "session_id": "...",
+                "status": "...",
+                "idle": "...",
+                "login_time": "..."
+            }
+        ]
+
+        ВАЖНО:
+
+        Один IP может соответствовать нескольким
+        Windows-сессиям, поэтому на один IP может
+        приходиться несколько записей.
+        """
+
+        # --------------------------------------------------------
+        # Получаем текущих посетителей дашборда
+        # --------------------------------------------------------
+
+        online_users = self.get_online_users(
+            minutes=minutes
+        )
+
+        result = []
+
+        # --------------------------------------------------------
+        # Для каждого IP определяем Windows-пользователей
+        # --------------------------------------------------------
+
+        for ip_address, last_visit in online_users:
+
+            windows_users = self.get_windows_users(
+                ip_address
+            )
+
+            # ----------------------------------------------------
+            # Если пользователей определить удалось
+            # ----------------------------------------------------
+
+            if windows_users:
+
+                for user in windows_users:
+
+                    result.append({
+                        "ip_address": ip_address,
+                        "last_visit": last_visit,
+                        "computer": user["computer"],
+                        "username": user["username"],
+                        "session": user["session"],
+                        "session_id": user["session_id"],
+                        "status": user["status"],
+                        "idle": user["idle"],
+                        "login_time": user["login_time"]
+                    })
+
+            # ----------------------------------------------------
+            # Если quser ничего не вернул
+            # ----------------------------------------------------
+
+            else:
+
+                computer_name = self._resolve_hostname(
+                    ip_address
+                )
+
+                result.append({
+                    "ip_address": ip_address,
+                    "last_visit": last_visit,
+                    "computer": computer_name,
+                    "username": "Не определен",
+                    "session": "",
+                    "session_id": "",
+                    "status": "",
+                    "idle": "",
+                    "login_time": ""
+                })
+
+        return result
+
+    # ============================================================
     # ПОЛЬЗОВАТЕЛИ ОНЛАЙН
     # ============================================================
 
@@ -422,10 +838,15 @@ class DashboardLogger:
         за последние N минут.
 
         Возвращает:
+
         [
             (ip_address, last_visit),
             ...
         ]
+
+        Этот метод специально оставлен в прежнем формате,
+        чтобы существующий admin.py продолжил работать
+        без изменений.
         """
 
         conn = None
@@ -460,7 +881,9 @@ class DashboardLogger:
                 FROM user_sessions
 
                 WHERE last_visit >= ?
+
                 AND ip_address IS NOT NULL
+
                 AND ip_address NOT IN (
                     '127.0.0.1',
                     'unknown'
@@ -524,8 +947,11 @@ class DashboardLogger:
 
             cursor.execute("""
                 SELECT COUNT(DISTINCT ip_address)
+
                 FROM user_actions
+
                 WHERE ip_address IS NOT NULL
+
                 AND ip_address NOT IN (
                     'unknown',
                     '127.0.0.1'
@@ -540,8 +966,11 @@ class DashboardLogger:
 
             cursor.execute("""
                 SELECT COUNT(DISTINCT session_id)
+
                 FROM user_sessions
+
                 WHERE session_id IS NOT NULL
+
                 AND session_id != 'unknown'
             """)
 
@@ -557,7 +986,9 @@ class DashboardLogger:
 
             cursor.execute("""
                 SELECT COUNT(*)
+
                 FROM user_actions
+
                 WHERE timestamp LIKE ?
             """, (
                 today + "%",
@@ -571,9 +1002,13 @@ class DashboardLogger:
 
             cursor.execute("""
                 SELECT COUNT(DISTINCT ip_address)
+
                 FROM user_actions
+
                 WHERE timestamp LIKE ?
+
                 AND ip_address IS NOT NULL
+
                 AND ip_address NOT IN (
                     'unknown',
                     '127.0.0.1'
@@ -596,6 +1031,7 @@ class DashboardLogger:
                 FROM user_actions
 
                 WHERE action = 'view_report'
+
                 AND report_name IS NOT NULL
 
                 GROUP BY report_name
@@ -624,6 +1060,33 @@ class DashboardLogger:
             """)
 
             daily_activity = cursor.fetchall()
+
+            # ----------------------------------------------------
+            # Пользователи по дням
+            # ----------------------------------------------------
+
+            cursor.execute("""
+                SELECT
+                    DATE(timestamp) as date,
+                    COUNT(DISTINCT ip_address) as count
+
+                FROM user_actions
+
+                WHERE ip_address IS NOT NULL
+
+                AND ip_address NOT IN (
+                    'unknown',
+                    '127.0.0.1'
+                )
+
+                GROUP BY DATE(timestamp)
+
+                ORDER BY date DESC
+
+                LIMIT 30
+            """)
+
+            daily_visitors = cursor.fetchall()
 
             # ----------------------------------------------------
             # Последние действия
@@ -657,6 +1120,7 @@ class DashboardLogger:
                 "today_visitors": today_visitors,
                 "popular_reports": popular_reports,
                 "daily_activity": daily_activity,
+                "daily_visitors": daily_visitors,
                 "recent_actions": recent_actions
             }
 
@@ -679,6 +1143,7 @@ class DashboardLogger:
                 "today_visitors": 0,
                 "popular_reports": [],
                 "daily_activity": [],
+                "daily_visitors": [],
                 "recent_actions": []
             }
 
