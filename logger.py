@@ -35,7 +35,7 @@ class DashboardLogger:
     # ============================================================
 
     def _init_db(self):
-        """Создает таблицы для логов, если их нет"""
+        """Создает таблицы для логов и пользователей, если их нет"""
 
         try:
 
@@ -70,6 +70,26 @@ class DashboardLogger:
             """)
 
             # ----------------------------------------------------
+            # ДОБАВЛЯЕМ USER_ID В СУЩЕСТВУЮЩУЮ ТАБЛИЦУ
+            # ----------------------------------------------------
+
+            cursor.execute("""
+                PRAGMA table_info(user_actions)
+            """)
+
+            columns = [
+                row[1]
+                for row in cursor.fetchall()
+            ]
+
+            if "user_id" not in columns:
+
+                cursor.execute("""
+                    ALTER TABLE user_actions
+                    ADD COLUMN user_id INTEGER
+                """)
+
+            # ----------------------------------------------------
             # СЕССИИ ПОЛЬЗОВАТЕЛЕЙ
             # ----------------------------------------------------
 
@@ -81,6 +101,20 @@ class DashboardLogger:
                     first_visit TEXT,
                     last_visit TEXT,
                     visit_count INTEGER DEFAULT 1
+                )
+            """)
+
+            # ----------------------------------------------------
+            # ПОЛЬЗОВАТЕЛИ ДАШБОРДА
+            # ----------------------------------------------------
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    login TEXT NOT NULL UNIQUE,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    last_login TEXT
                 )
             """)
 
@@ -102,6 +136,340 @@ class DashboardLogger:
                 f"LOGGER DB: "
                 f"{os.path.abspath(self.db_path)}"
             )
+
+    # ============================================================
+    # ПОЛЬЗОВАТЕЛИ
+    # ============================================================
+
+    def register_user(self, login):
+        """
+        Регистрирует нового пользователя.
+
+        Возвращает:
+        (True, user_id)  - пользователь успешно создан
+        (False, message) - ошибка
+        """
+
+        conn = None
+
+        try:
+
+            login = login.strip()
+
+            if not login:
+                return False, "Введите логин"
+
+            conn = sqlite3.connect(
+                self.db_path
+            )
+
+            cursor = conn.cursor()
+
+            created_at = datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+
+            cursor.execute("""
+                INSERT INTO users (
+                    login,
+                    is_active,
+                    created_at,
+                    last_login
+                )
+                VALUES (?, 1, ?, NULL)
+            """, (
+                login,
+                created_at
+            ))
+
+            user_id = cursor.lastrowid
+
+            conn.commit()
+
+            return True, user_id
+
+        except sqlite3.IntegrityError:
+
+            return False, "Пользователь с таким логином уже существует"
+
+        except Exception as e:
+
+            print(
+                f"REGISTER USER ERROR: {e}"
+            )
+
+            return False, "Ошибка регистрации пользователя"
+
+        finally:
+
+            if conn is not None:
+
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    # ------------------------------------------------------------
+    # АКТИВНЫЕ ПОЛЬЗОВАТЕЛИ
+    # ------------------------------------------------------------
+
+    def get_active_users(self):
+        """
+        Возвращает активных пользователей.
+
+        Формат:
+        [
+            (user_id, login),
+            ...
+        ]
+        """
+
+        conn = None
+
+        try:
+
+            conn = sqlite3.connect(
+                self.db_path
+            )
+
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT
+                    user_id,
+                    login
+                FROM users
+                WHERE is_active = 1
+                ORDER BY login
+            """)
+
+            return cursor.fetchall()
+
+        except Exception as e:
+
+            print(
+                f"GET ACTIVE USERS ERROR: {e}"
+            )
+
+            return []
+
+        finally:
+
+            if conn is not None:
+
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    # ------------------------------------------------------------
+    # ВСЕ ПОЛЬЗОВАТЕЛИ
+    # ------------------------------------------------------------
+
+    def get_all_users(self):
+        """
+        Возвращает всех пользователей.
+
+        Формат:
+        [
+            (user_id, login, is_active, created_at, last_login),
+            ...
+        ]
+        """
+
+        conn = None
+
+        try:
+
+            conn = sqlite3.connect(
+                self.db_path
+            )
+
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT
+                    user_id,
+                    login,
+                    is_active,
+                    created_at,
+                    last_login
+                FROM users
+                ORDER BY login
+            """)
+
+            return cursor.fetchall()
+
+        except Exception as e:
+
+            print(
+                f"GET ALL USERS ERROR: {e}"
+            )
+
+            return []
+
+        finally:
+
+            if conn is not None:
+
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    # ------------------------------------------------------------
+    # АКТИВНОСТЬ ПОЛЬЗОВАТЕЛЯ
+    # ------------------------------------------------------------
+
+    def set_user_active(self, user_id, is_active):
+        """
+        Включает или выключает пользователя.
+
+        is_active:
+        True  - активен
+        False - неактивен
+        """
+
+        conn = None
+
+        try:
+
+            conn = sqlite3.connect(
+                self.db_path
+            )
+
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                UPDATE users
+                SET is_active = ?
+                WHERE user_id = ?
+            """, (
+                1 if is_active else 0,
+                user_id
+            ))
+
+            conn.commit()
+
+            return True
+
+        except Exception as e:
+
+            print(
+                f"SET USER ACTIVE ERROR: {e}"
+            )
+
+            return False
+
+        finally:
+
+            if conn is not None:
+
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    # ------------------------------------------------------------
+    # УДАЛЕНИЕ ПОЛЬЗОВАТЕЛЯ
+    # ------------------------------------------------------------
+
+    def delete_user(self, user_id):
+        """
+        Удаляет пользователя из таблицы users.
+
+        История действий и сессий пользователя
+        при этом не удаляется.
+        """
+
+        conn = None
+
+        try:
+
+            conn = sqlite3.connect(
+                self.db_path
+            )
+
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                DELETE FROM users
+                WHERE user_id = ?
+            """, (
+                user_id,
+            ))
+
+            conn.commit()
+
+            return True
+
+        except Exception as e:
+
+            print(
+                f"DELETE USER ERROR: {e}"
+            )
+
+            return False
+
+        finally:
+
+            if conn is not None:
+
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    # ------------------------------------------------------------
+    # ПОСЛЕДНИЙ ВХОД
+    # ------------------------------------------------------------
+
+    def update_last_login(self, user_id):
+        """Обновляет дату и время последнего входа"""
+
+        conn = None
+
+        try:
+
+            conn = sqlite3.connect(
+                self.db_path
+            )
+
+            cursor = conn.cursor()
+
+            last_login = datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+
+            cursor.execute("""
+                UPDATE users
+                SET last_login = ?
+                WHERE user_id = ?
+            """, (
+                last_login,
+                user_id
+            ))
+
+            conn.commit()
+
+            return True
+
+        except Exception as e:
+
+            print(
+                f"UPDATE LAST LOGIN ERROR: {e}"
+            )
+
+            return False
+
+        finally:
+
+            if conn is not None:
+
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     # ============================================================
     # ПОЛУЧЕНИЕ IP-АДРЕСА
@@ -278,6 +646,14 @@ class DashboardLogger:
             )
 
             # ----------------------------------------------------
+            # USER ID
+            # ----------------------------------------------------
+
+            user_id = st.session_state.get(
+                "user_id"
+            )
+
+            # ----------------------------------------------------
             # Время
             # ----------------------------------------------------
 
@@ -311,9 +687,10 @@ class DashboardLogger:
                     action,
                     report_name,
                     params,
-                    session_id
+                    session_id,
+                    user_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 timestamp,
                 ip_address,
@@ -321,7 +698,8 @@ class DashboardLogger:
                 action,
                 report_name,
                 params_json,
-                session_id
+                session_id,
+                user_id
             ))
 
             # ----------------------------------------------------
@@ -334,6 +712,7 @@ class DashboardLogger:
                 f"LOGGER INSERT: "
                 f"id={inserted_id}, "
                 f"action={action}, "
+                f"user_id={user_id}, "
                 f"ip={ip_address}, "
                 f"session={session_id}"
             )
@@ -631,12 +1010,14 @@ class DashboardLogger:
 
             cursor.execute("""
                 SELECT
-                    timestamp,
-                    ip_address,
-                    action,
-                    report_name
-
-                FROM user_actions
+                    ua.timestamp,
+                    ua.ip_address,
+                    ua.action,
+                    ua.report_name,
+                    u.login
+                FROM user_actions ua
+                LEFT JOIN users u
+                    ON ua.user_id = u.user_id
 
                 ORDER BY timestamp DESC
 

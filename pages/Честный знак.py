@@ -370,10 +370,6 @@ tab_accepted, tab_search_os, tab_problems = st.tabs(
 
 with tab_accepted:
 
-    st.subheader(
-        "Принятые марки"
-    )
-
     st.caption(
         "Марки, принятые на склад за выбранный период."
     )
@@ -585,10 +581,6 @@ with tab_accepted:
 # ============================================================
 
 with tab_search_os:
-
-    st.subheader(
-        "Поиск марок по ОС"
-    )
 
     st.caption(
         "Поиск по части номера ОС."
@@ -890,10 +882,6 @@ with tab_search_os:
 # ============================================================
 
 with tab_problems:
-
-    st.subheader(
-        "⚠️ Проблемы"
-    )
 
     st.caption(
         "Проблемы и ошибки, связанные с системой "

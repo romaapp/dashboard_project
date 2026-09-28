@@ -135,6 +135,318 @@ def check_password():
 
 
 # ============================================================
+# УПРАВЛЕНИЕ ПОЛЬЗОВАТЕЛЯМИ
+# ============================================================
+
+def users_management():
+
+    st.subheader(
+        "👤 Управление пользователями"
+    )
+
+    st.caption(
+        "Здесь можно просматривать зарегистрированных "
+        "пользователей, изменять их статус и удалять учетные записи."
+    )
+
+
+    # ========================================================
+    # ПОЛУЧАЕМ ВСЕХ ПОЛЬЗОВАТЕЛЕЙ
+    # ========================================================
+
+    users = logger.get_all_users()
+
+
+    if not users:
+
+        st.info(
+            "Зарегистрированных пользователей пока нет."
+        )
+
+        return
+
+
+    # ========================================================
+    # ТАБЛИЦА ПОЛЬЗОВАТЕЛЕЙ
+    # ========================================================
+
+    users_data = []
+
+    for user in users:
+
+        (
+            user_id,
+            login,
+            is_active,
+            created_at,
+            last_login
+        ) = user
+
+
+        status = (
+            "✔ Активен"
+            if bool(is_active)
+            else "⭕ Отключён"
+        )
+
+
+        users_data.append(
+            {
+                "ID": user_id,
+                "Пользователь": login,
+                "Статус": status,
+                "Дата регистрации": created_at,
+                "Последний вход": (
+                    last_login
+                    if last_login
+                    else "—"
+                )
+            }
+        )
+
+
+    df_users = pd.DataFrame(
+        users_data
+    )
+
+
+    st.dataframe(
+        df_users[
+            [
+                "Пользователь",
+                "Статус",
+                "Дата регистрации",
+                "Последний вход"
+            ]
+        ],
+        use_container_width=True,
+        hide_index=True
+    )
+
+
+    st.divider()
+
+
+    # ========================================================
+    # ВЫБОР ПОЛЬЗОВАТЕЛЯ
+    # ========================================================
+
+    st.subheader(
+        "⚙️ Управление учетной записью"
+    )
+
+
+    user_options = {
+        user[1]: user
+        for user in users
+    }
+
+
+    selected_login = st.selectbox(
+        "Выберите пользователя:",
+        options=list(user_options.keys()),
+        key="admin_selected_user"
+    )
+
+
+    selected_user = user_options[
+        selected_login
+    ]
+
+
+    (
+        selected_user_id,
+        selected_user_login,
+        selected_is_active,
+        selected_created_at,
+        selected_last_login
+    ) = selected_user
+
+
+    # ========================================================
+    # ИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ
+    # ========================================================
+
+    col1, col2, col3 = st.columns(3)
+
+
+    with col1:
+
+        st.metric(
+            "👤 Пользователь",
+            selected_user_login
+        )
+
+
+    with col2:
+
+        st.metric(
+            "Статус",
+            "✔ Активен"
+            if bool(selected_is_active)
+            else "⭕ Отключён"
+        )
+
+
+    with col3:
+
+        st.metric(
+            "🆔 ID",
+            selected_user_id
+        )
+
+
+    st.caption(
+        f"📅 Регистрация: "
+        f"{selected_created_at or '—'}"
+        f"   •   "
+        f"🕐 Последний вход: "
+        f"{selected_last_login or '—'}"
+    )
+
+
+    st.divider()
+
+
+    # ========================================================
+    # КНОПКИ УПРАВЛЕНИЯ
+    # ========================================================
+
+    col_activate, col_delete = st.columns(
+        2
+    )
+
+
+    # ========================================================
+    # АКТИВАЦИЯ / ОТКЛЮЧЕНИЕ
+    # ========================================================
+
+    with col_activate:
+
+        if bool(selected_is_active):
+
+            if st.button(
+                "⭕ Отключить пользователя",
+                use_container_width=True,
+                key="deactivate_selected_user"
+            ):
+
+                logger.set_user_active(
+                    selected_user_id,
+                    False
+                )
+
+                st.success(
+                    f"Пользователь "
+                    f"«{selected_user_login}» отключён."
+                )
+
+                st.rerun()
+
+        else:
+
+            if st.button(
+                "✔ Активировать пользователя",
+                use_container_width=True,
+                key="activate_selected_user"
+            ):
+
+                logger.set_user_active(
+                    selected_user_id,
+                    True
+                )
+
+                st.success(
+                    f"Пользователь "
+                    f"«{selected_user_login}» активирован."
+                )
+
+                st.rerun()
+
+
+    # ========================================================
+    # УДАЛЕНИЕ
+    # ========================================================
+
+    with col_delete:
+
+        if st.button(
+            "🗑 Удалить пользователя",
+            use_container_width=True,
+            key="delete_selected_user"
+        ):
+
+            st.session_state[
+                "confirm_delete_user"
+            ] = True
+
+
+    # ========================================================
+    # ПОДТВЕРЖДЕНИЕ УДАЛЕНИЯ
+    # ========================================================
+
+    if st.session_state.get(
+        "confirm_delete_user",
+        False
+    ):
+
+        st.warning(
+            f"⚠️ Вы действительно хотите удалить "
+            f"пользователя «{selected_user_login}»?"
+        )
+
+        st.caption(
+            "История действий пользователя "
+            "в статистике дашборда при этом сохранится."
+        )
+
+
+        col_confirm, col_cancel = st.columns(
+            2
+        )
+
+
+        with col_confirm:
+
+            if st.button(
+                "🗑 Да, удалить",
+                type="primary",
+                use_container_width=True,
+                key="confirm_delete_user_button"
+            ):
+
+                logger.delete_user(
+                    selected_user_id
+                )
+
+                st.session_state[
+                    "confirm_delete_user"
+                ] = False
+
+                st.success(
+                    f"Пользователь "
+                    f"«{selected_user_login}» удалён."
+                )
+
+                st.rerun()
+
+
+        with col_cancel:
+
+            if st.button(
+                "✖ Отмена",
+                use_container_width=True,
+                key="cancel_delete_user_button"
+            ):
+
+                st.session_state[
+                    "confirm_delete_user"
+                ] = False
+
+                st.rerun()
+
+
+# ============================================================
 # ГЛАВНАЯ ФУНКЦИЯ
 # ============================================================
 
@@ -236,11 +548,17 @@ def main():
     # ВКЛАДКИ
     # ========================================================
 
-    tab_statistics, tab_online, tab_suggestions = st.tabs(
+    (
+        tab_statistics,
+        tab_online,
+        tab_suggestions,
+        tab_users
+    ) = st.tabs(
         [
             "📊 Статистика использования дашборда",
             "🌐 Пользователи онлайн",
-            "💡 Предложения по развитию"
+            "💡 Предложения по развитию",
+            "👤 Пользователи"
         ]
     )
 
@@ -427,7 +745,6 @@ def main():
             # ПОЛЬЗОВАТЕЛИ ПО ДНЯМ
             # ------------------------------------------------
 
-
             df_visitors = get_daily_visitors()
 
 
@@ -478,7 +795,6 @@ def main():
     # ========================================================
 
     with tab_online:
-
 
         st.caption(
             "Пользователь считается онлайн, "
@@ -612,7 +928,8 @@ def main():
                     "Время",
                     "IP адрес",
                     "Действие",
-                    "Отчет"
+                    "Отчет",
+                    "Пользователь"
                 ]
             )
 
@@ -620,6 +937,8 @@ def main():
             df_actions["Действие"] = df_actions[
                 "Действие"
             ].replace({
+                "login": "Вход",
+                "logout": "Выход",
                 "page_visit": "Посещение страницы",
                 "view_report": "Запуск отчета",
                 "visit": "Посещение страницы"
@@ -681,7 +1000,6 @@ def main():
     # ========================================================
 
     with tab_suggestions:
-
 
         suggestions = all_suggestions
 
@@ -956,6 +1274,15 @@ def main():
                             )
 
                             st.rerun()
+
+
+    # ========================================================
+    # ВКЛАДКА 4 — ПОЛЬЗОВАТЕЛИ
+    # ========================================================
+
+    with tab_users:
+
+        users_management()
 
 
 # ============================================================
