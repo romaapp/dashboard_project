@@ -40,11 +40,22 @@ pages = [
         "pages/Разработка.py",
         title="🛠️ Разработка"
     ),
+    
+    st.Page(
+        "pages/Честный знак.py",
+        title="🏷️ Честный знак"
+    ),
+
+    st.Page(
+        "pages/timeline.py",
+        title="🕐 Timeline заявки"
+    ),
 
     st.Page(
         "pages/admin.py",
         title="🔐 Администрирование"
     ),
+
 ]
 
 

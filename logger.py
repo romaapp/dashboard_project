@@ -4,19 +4,14 @@ from datetime import datetime, timedelta
 import streamlit as st
 import os
 
-from sqlalchemy import text
-from config import Config
-
 
 class DashboardLogger:
-    """Класс для логирования действий пользователей в SQLite
-    с определением пользователя через WMS PostgreSQL.
-    """
+    """Класс для логирования действий пользователей в SQLite"""
 
     def __init__(self, db_path=None):
 
         # ========================================================
-        # ПУТЬ К БАЗЕ ДАННЫХ DASHBOARD
+        # ПУТЬ К БАЗЕ ДАННЫХ
         # ========================================================
 
         if db_path is None:
@@ -33,10 +28,6 @@ class DashboardLogger:
 
         self.db_path = db_path
 
-        # ========================================================
-        # ИНИЦИАЛИЗАЦИЯ SQLITE
-        # ========================================================
-
         self._init_db()
 
     # ============================================================
@@ -44,7 +35,7 @@ class DashboardLogger:
     # ============================================================
 
     def _init_db(self):
-        """Создает таблицы для логов, если их нет."""
+        """Создает таблицы для логов, если их нет"""
 
         try:
 
@@ -74,8 +65,7 @@ class DashboardLogger:
                     action TEXT,
                     report_name TEXT,
                     params TEXT,
-                    session_id TEXT,
-                    wms_login TEXT
+                    session_id TEXT
                 )
             """)
 
@@ -90,56 +80,15 @@ class DashboardLogger:
                     ip_address TEXT,
                     first_visit TEXT,
                     last_visit TEXT,
-                    visit_count INTEGER DEFAULT 1,
-                    wms_login TEXT
+                    visit_count INTEGER DEFAULT 1
                 )
             """)
-
-            # ----------------------------------------------------
-            # ПРОВЕРЯЕМ СТАРУЮ СХЕМУ
-            # ----------------------------------------------------
-
-            cursor.execute(
-                "PRAGMA table_info(user_actions)"
-            )
-
-            action_columns = [
-                row[1]
-                for row in cursor.fetchall()
-            ]
-
-            if "wms_login" not in action_columns:
-
-                cursor.execute("""
-                    ALTER TABLE user_actions
-                    ADD COLUMN wms_login TEXT
-                """)
-
-            # ----------------------------------------------------
-
-            cursor.execute(
-                "PRAGMA table_info(user_sessions)"
-            )
-
-            session_columns = [
-                row[1]
-                for row in cursor.fetchall()
-            ]
-
-            if "wms_login" not in session_columns:
-
-                cursor.execute("""
-                    ALTER TABLE user_sessions
-                    ADD COLUMN wms_login TEXT
-                """)
-
-            # ----------------------------------------------------
 
             conn.commit()
             conn.close()
 
             print(
-                "LOGGER: database initialized: "
+                f"LOGGER: database initialized: "
                 f"{os.path.abspath(self.db_path)}"
             )
 
@@ -150,7 +99,7 @@ class DashboardLogger:
             )
 
             print(
-                "LOGGER DB: "
+                f"LOGGER DB: "
                 f"{os.path.abspath(self.db_path)}"
             )
 
@@ -173,7 +122,7 @@ class DashboardLogger:
             from streamlit.runtime import get_instance
 
             # ----------------------------------------------------
-            # STREAMLIT CONTEXT
+            # Получаем текущий Streamlit context
             # ----------------------------------------------------
 
             ctx = get_script_run_ctx()
@@ -187,13 +136,13 @@ class DashboardLogger:
                 return "unknown"
 
             # ----------------------------------------------------
-            # RUNTIME
+            # Получаем runtime
             # ----------------------------------------------------
 
             runtime = get_instance()
 
             # ----------------------------------------------------
-            # SESSION INFO
+            # Получаем информацию о текущей сессии
             # ----------------------------------------------------
 
             session_info = (
@@ -211,7 +160,7 @@ class DashboardLogger:
                 return "unknown"
 
             # ----------------------------------------------------
-            # CLIENT
+            # Получаем клиента
             # ----------------------------------------------------
 
             client = session_info.client
@@ -225,7 +174,7 @@ class DashboardLogger:
                 return "unknown"
 
             # ----------------------------------------------------
-            # WEBSOCKET
+            # Получаем WebSocket
             # ----------------------------------------------------
 
             websocket = getattr(
@@ -243,7 +192,7 @@ class DashboardLogger:
                 return "unknown"
 
             # ----------------------------------------------------
-            # REMOTE CLIENT
+            # Получаем адрес клиента
             # ----------------------------------------------------
 
             remote_client = websocket.client
@@ -273,155 +222,6 @@ class DashboardLogger:
             return "unknown"
 
     # ============================================================
-    # ПОЛУЧЕНИЕ LOGIN ИЗ WMS
-    # ============================================================
-
-    def get_wms_login(self, ip_address):
-        """
-        Определяет пользователя WMS по IP.
-
-        Учитываются только сессии:
-
-        - recorddate = сегодня
-        - isactive = 1
-        - lastactiondate за последние 5 минут
-
-        Если у одного IP несколько пользователей,
-        login объединяются через " / ".
-        """
-
-        # --------------------------------------------------------
-        # ПРОВЕРКА IP
-        # --------------------------------------------------------
-
-        if not ip_address:
-            return None
-
-        if ip_address in (
-            "unknown",
-            "127.0.0.1"
-        ):
-            return None
-
-        engine = None
-
-        try:
-
-            # ----------------------------------------------------
-            # ПОДКЛЮЧЕНИЕ К WMS POSTGRESQL
-            # ----------------------------------------------------
-
-            engine = Config.get_engine()
-
-            # ----------------------------------------------------
-            # ЗАПРОС
-            # ----------------------------------------------------
-
-            query = text("""
-                WITH active_sessions AS (
-
-                    SELECT
-                        s.*,
-
-                        ROW_NUMBER() OVER (
-                            PARTITION BY s.sessionguid
-                            ORDER BY s.lastactiondate DESC
-                        ) AS rn
-
-                    FROM sessions s
-
-                    WHERE
-                        s.recorddate::date = CURRENT_DATE
-                        AND s.isactive = 1
-                )
-
-                SELECT
-                    STRING_AGG(
-                        DISTINCT u.login,
-                        ' / '
-                        ORDER BY u.login
-                    ) AS login
-
-                FROM active_sessions s
-
-                JOIN users u
-                    ON u.tid = s.user_id
-
-                WHERE
-                    s.rn = 1
-
-                    AND s.remote_addr = :ip_address
-
-                    AND s.lastactiondate >=
-                        NOW() - INTERVAL '5 minutes'
-
-                    AND s.remote_addr IS NOT NULL
-            """)
-
-            # ----------------------------------------------------
-            # ВЫПОЛНЯЕМ ЗАПРОС
-            # ----------------------------------------------------
-
-            with engine.connect() as connection:
-
-                result = connection.execute(
-                    query,
-                    {
-                        "ip_address": ip_address
-                    }
-                )
-
-                row = result.fetchone()
-
-            # ----------------------------------------------------
-            # LOGIN НАЙДЕН
-            # ----------------------------------------------------
-
-            if row and row[0]:
-
-                wms_login = row[0]
-
-                print(
-                    "WMS LOGIN: "
-                    f"IP={ip_address} "
-                    f"LOGIN={wms_login}"
-                )
-
-                return wms_login
-
-            # ----------------------------------------------------
-            # LOGIN НЕ НАЙДЕН
-            # ----------------------------------------------------
-
-            print(
-                "WMS LOGIN: "
-                f"IP={ip_address} "
-                "пользователь не найден"
-            )
-
-            return None
-
-        except Exception as e:
-
-            print(
-                "WMS LOGIN ERROR: "
-                f"{e}"
-            )
-
-            return None
-
-        finally:
-
-            # ----------------------------------------------------
-            # SQLAlchemy engine
-            # ----------------------------------------------------
-
-            # Engine управляет своим connection pool,
-            # поэтому вручную закрывать его здесь не нужно.
-
-            pass
-
-    # ============================================================
     # ЛОГИРОВАНИЕ ДЕЙСТВИЯ
     # ============================================================
 
@@ -431,14 +231,14 @@ class DashboardLogger:
         report_name=None,
         params=None
     ):
-        """Логирует действие пользователя."""
+        """Логирует действие пользователя"""
 
         conn = None
 
         try:
 
             # ----------------------------------------------------
-            # SQLITE
+            # Подключение к БД
             # ----------------------------------------------------
 
             conn = sqlite3.connect(
@@ -448,21 +248,13 @@ class DashboardLogger:
             cursor = conn.cursor()
 
             # ----------------------------------------------------
-            # IP ПОЛЬЗОВАТЕЛЯ
+            # IP пользователя
             # ----------------------------------------------------
 
             ip_address = self._get_client_ip()
 
             # ----------------------------------------------------
-            # LOGIN WMS
-            # ----------------------------------------------------
-
-            wms_login = self.get_wms_login(
-                ip_address
-            )
-
-            # ----------------------------------------------------
-            # USER-AGENT
+            # User-Agent
             # ----------------------------------------------------
 
             try:
@@ -477,7 +269,7 @@ class DashboardLogger:
                 user_agent = "unknown"
 
             # ----------------------------------------------------
-            # SESSION ID
+            # Session ID
             # ----------------------------------------------------
 
             session_id = st.session_state.get(
@@ -486,7 +278,7 @@ class DashboardLogger:
             )
 
             # ----------------------------------------------------
-            # ВРЕМЯ
+            # Время
             # ----------------------------------------------------
 
             timestamp = datetime.now().strftime(
@@ -494,7 +286,7 @@ class DashboardLogger:
             )
 
             # ----------------------------------------------------
-            # ПАРАМЕТРЫ
+            # Параметры
             # ----------------------------------------------------
 
             params_json = (
@@ -507,7 +299,7 @@ class DashboardLogger:
             )
 
             # ----------------------------------------------------
-            # ЗАПИСЬ ДЕЙСТВИЯ
+            # Запись действия
             # ----------------------------------------------------
 
             cursor.execute("""
@@ -519,10 +311,9 @@ class DashboardLogger:
                     action,
                     report_name,
                     params,
-                    session_id,
-                    wms_login
+                    session_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (
                 timestamp,
                 ip_address,
@@ -530,23 +321,25 @@ class DashboardLogger:
                 action,
                 report_name,
                 params_json,
-                session_id,
-                wms_login
+                session_id
             ))
+
+            # ----------------------------------------------------
+            # Проверяем, что INSERT действительно выполнен
+            # ----------------------------------------------------
 
             inserted_id = cursor.lastrowid
 
             print(
-                "LOGGER INSERT: "
+                f"LOGGER INSERT: "
                 f"id={inserted_id}, "
                 f"action={action}, "
                 f"ip={ip_address}, "
-                f"login={wms_login}, "
                 f"session={session_id}"
             )
 
             # ----------------------------------------------------
-            # ОБНОВЛЕНИЕ СЕССИИ
+            # Обновляем информацию о сессии
             # ----------------------------------------------------
 
             if session_id != "unknown":
@@ -558,37 +351,31 @@ class DashboardLogger:
                         ip_address,
                         first_visit,
                         last_visit,
-                        visit_count,
-                        wms_login
+                        visit_count
                     )
-                    VALUES (?, ?, ?, ?, 1, ?)
+                    VALUES (?, ?, ?, ?, 1)
 
                     ON CONFLICT(session_id)
                     DO UPDATE SET
                         last_visit = ?,
-                        ip_address = ?,
-                        wms_login = ?,
-                        visit_count =
-                            user_sessions.visit_count + 1
+                        ip_address = ?
                 """, (
                     session_id,
                     ip_address,
                     timestamp,
                     timestamp,
-                    wms_login,
                     timestamp,
-                    ip_address,
-                    wms_login
+                    ip_address
                 ))
 
             # ----------------------------------------------------
-            # COMMIT
+            # Фиксируем транзакцию
             # ----------------------------------------------------
 
             conn.commit()
 
             print(
-                "LOGGER COMMIT OK: "
+                f"LOGGER COMMIT OK: "
                 f"{os.path.abspath(self.db_path)}"
             )
 
@@ -631,8 +418,14 @@ class DashboardLogger:
 
     def get_online_users(self, minutes=5):
         """
-        Получает пользователей Dashboard,
-        активных за последние N минут.
+        Получает пользователей, которые были активны
+        за последние N минут.
+
+        Возвращает:
+        [
+            (ip_address, last_visit),
+            ...
+        ]
         """
 
         conn = None
@@ -645,30 +438,33 @@ class DashboardLogger:
 
             cursor = conn.cursor()
 
+            # ----------------------------------------------------
+            # Время, после которого пользователь считается
+            # неактивным
+            # ----------------------------------------------------
+
             cutoff = (
                 datetime.now()
                 - timedelta(minutes=minutes)
-            ).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
+            ).strftime("%Y-%m-%d %H:%M:%S")
+
+            # ----------------------------------------------------
+            # Получаем последнюю активность по каждому IP
+            # ----------------------------------------------------
 
             cursor.execute("""
                 SELECT
                     ip_address,
-                    MAX(last_visit) AS last_visit,
-                    MAX(wms_login) AS wms_login
+                    MAX(last_visit) AS last_visit
 
                 FROM user_sessions
 
-                WHERE
-                    last_visit >= ?
-
-                    AND ip_address IS NOT NULL
-
-                    AND ip_address NOT IN (
-                        '127.0.0.1',
-                        'unknown'
-                    )
+                WHERE last_visit >= ?
+                AND ip_address IS NOT NULL
+                AND ip_address NOT IN (
+                    '127.0.0.1',
+                    'unknown'
+                )
 
                 GROUP BY ip_address
 
@@ -677,13 +473,14 @@ class DashboardLogger:
                 cutoff,
             ))
 
-            return cursor.fetchall()
+            online_users = cursor.fetchall()
+
+            return online_users
 
         except Exception as e:
 
             print(
-                "Ошибка получения "
-                f"онлайн пользователей: {e}"
+                f"Ошибка получения онлайн пользователей: {e}"
             )
 
             return []
@@ -699,7 +496,7 @@ class DashboardLogger:
     # ============================================================
 
     def get_statistics(self):
-        """Получает статистику из логов."""
+        """Получает статистику из логов"""
 
         conn = None
 
@@ -712,7 +509,7 @@ class DashboardLogger:
             cursor = conn.cursor()
 
             # ----------------------------------------------------
-            # ВСЕГО ДЕЙСТВИЙ
+            # Всего действий
             # ----------------------------------------------------
 
             cursor.execute(
@@ -722,43 +519,36 @@ class DashboardLogger:
             total_actions = cursor.fetchone()[0]
 
             # ----------------------------------------------------
-            # УНИКАЛЬНЫЕ ПОСЕТИТЕЛИ
+            # Уникальные посетители
             # ----------------------------------------------------
 
             cursor.execute("""
                 SELECT COUNT(DISTINCT ip_address)
-
                 FROM user_actions
-
-                WHERE
-                    ip_address IS NOT NULL
-
-                    AND ip_address NOT IN (
-                        'unknown',
-                        '127.0.0.1'
-                    )
+                WHERE ip_address IS NOT NULL
+                AND ip_address NOT IN (
+                    'unknown',
+                    '127.0.0.1'
+                )
             """)
 
             unique_visitors = cursor.fetchone()[0]
 
             # ----------------------------------------------------
-            # УНИКАЛЬНЫЕ СЕССИИ
+            # Уникальные сессии
             # ----------------------------------------------------
 
             cursor.execute("""
                 SELECT COUNT(DISTINCT session_id)
-
                 FROM user_sessions
-
-                WHERE
-                    session_id IS NOT NULL
-                    AND session_id != 'unknown'
+                WHERE session_id IS NOT NULL
+                AND session_id != 'unknown'
             """)
 
             unique_sessions = cursor.fetchone()[0]
 
             # ----------------------------------------------------
-            # ДЕЙСТВИЯ СЕГОДНЯ
+            # Действия сегодня
             # ----------------------------------------------------
 
             today = datetime.now().strftime(
@@ -767,9 +557,7 @@ class DashboardLogger:
 
             cursor.execute("""
                 SELECT COUNT(*)
-
                 FROM user_actions
-
                 WHERE timestamp LIKE ?
             """, (
                 today + "%",
@@ -778,23 +566,18 @@ class DashboardLogger:
             today_actions = cursor.fetchone()[0]
 
             # ----------------------------------------------------
-            # ПОСЕТИТЕЛИ СЕГОДНЯ
+            # Посетители сегодня
             # ----------------------------------------------------
 
             cursor.execute("""
                 SELECT COUNT(DISTINCT ip_address)
-
                 FROM user_actions
-
-                WHERE
-                    timestamp LIKE ?
-
-                    AND ip_address IS NOT NULL
-
-                    AND ip_address NOT IN (
-                        'unknown',
-                        '127.0.0.1'
-                    )
+                WHERE timestamp LIKE ?
+                AND ip_address IS NOT NULL
+                AND ip_address NOT IN (
+                    'unknown',
+                    '127.0.0.1'
+                )
             """, (
                 today + "%",
             ))
@@ -802,19 +585,18 @@ class DashboardLogger:
             today_visitors = cursor.fetchone()[0]
 
             # ----------------------------------------------------
-            # ПОПУЛЯРНЫЕ ОТЧЕТЫ
+            # Популярные отчеты
             # ----------------------------------------------------
 
             cursor.execute("""
                 SELECT
                     report_name,
-                    COUNT(*) AS count
+                    COUNT(*) as count
 
                 FROM user_actions
 
-                WHERE
-                    action = 'view_report'
-                    AND report_name IS NOT NULL
+                WHERE action = 'view_report'
+                AND report_name IS NOT NULL
 
                 GROUP BY report_name
 
@@ -824,13 +606,13 @@ class DashboardLogger:
             popular_reports = cursor.fetchall()
 
             # ----------------------------------------------------
-            # АКТИВНОСТЬ ПО ДНЯМ
+            # Активность по дням
             # ----------------------------------------------------
 
             cursor.execute("""
                 SELECT
-                    DATE(timestamp) AS date,
-                    COUNT(*) AS count
+                    DATE(timestamp) as date,
+                    COUNT(*) as count
 
                 FROM user_actions
 
@@ -844,7 +626,7 @@ class DashboardLogger:
             daily_activity = cursor.fetchall()
 
             # ----------------------------------------------------
-            # ПОСЛЕДНИЕ ДЕЙСТВИЯ
+            # Последние действия
             # ----------------------------------------------------
 
             cursor.execute("""
@@ -852,8 +634,7 @@ class DashboardLogger:
                     timestamp,
                     ip_address,
                     action,
-                    report_name,
-                    wms_login
+                    report_name
 
                 FROM user_actions
 
@@ -865,7 +646,7 @@ class DashboardLogger:
             recent_actions = cursor.fetchall()
 
             # ----------------------------------------------------
-            # ВОЗВРАТ
+            # Возвращаем статистику
             # ----------------------------------------------------
 
             return {
@@ -886,7 +667,7 @@ class DashboardLogger:
             )
 
             print(
-                "LOGGER DB: "
+                f"LOGGER DB: "
                 f"{os.path.abspath(self.db_path)}"
             )
 
