@@ -227,36 +227,50 @@ def search_os(search_value):
 def get_marks_by_os(os_number):
 
     query = """
-    select distinct l.locationname as "Место",
-        so.barcode as "Номер ОС",
-        m.nameen as "Артикул",
-        m.nameru as "Наименование",
-        st.nameru as "Вид запаса",
-        s.cis_code as "КИ", 
-        pc.cis_code as "КИТУ", 
-        s.receiptdate::date as "Дата приемки",
-        hw.documentnumber as "Входящая поставка"
-    from cis.stock as s
-        join storageobjects as so on
-        s.storageobject_id = so.tid
-        join cis.stock as pc on
-        s.parentcis_id::text = pc.cis_id::text
-        join warehousesummary as w on
-        so.tid = w.storageobject_id
-        join materials as m on
-        w.material_id = m.tid
-        join stocktypes as st on
-        w.stocktype_id = st.tid
-        join locations as l on
-        so.location_id = l.tid
-        left join tbl_warehouseincomeobjects as tw on
-        so.tid = tw.storageobject_id
-        left join hdr_warehouseincome as hw on
-        tw.transaction_id = hw.transaction_id
-    where m.isam = '1' 
-        and s.barcodeobject_id = w.barcodeobject_id
-        and so.barcode = %s
-    order by m.nameen;
+    SELECT DISTINCT
+        l.locationname AS "Место",
+        so.barcode AS "Номер ОС",
+        m.nameen AS "Артикул",
+        m.nameru AS "Наименование",
+        st.nameru AS "Вид запаса",
+        s.cis_code AS "КИ",
+        pc.cis_code AS "КИТУ",
+        s.receiptdate::date AS "Дата приемки",
+        hw.documentnumber AS "Входящая поставка"
+
+    FROM cis.stock AS s
+
+    JOIN storageobjects AS so
+        ON s.storageobject_id = so.tid
+
+    JOIN cis.stock AS pc
+        ON s.parentcis_id::text = pc.cis_id::text
+
+    JOIN warehousesummary AS w
+        ON so.tid = w.storageobject_id
+
+    JOIN materials AS m
+        ON w.material_id = m.tid
+
+    JOIN stocktypes AS st
+        ON w.stocktype_id = st.tid
+
+    JOIN locations AS l
+        ON so.location_id = l.tid
+
+    LEFT JOIN tbl_warehouseincomeobjects AS tw
+        ON so.tid = tw.storageobject_id
+
+    LEFT JOIN hdr_warehouseincome AS hw
+        ON tw.transaction_id = hw.transaction_id
+
+    WHERE
+        m.isam = '1'
+        AND s.barcodeobject_id = w.barcodeobject_id
+        AND so.barcode = %s
+
+    ORDER BY
+        m.nameen;
     """
 
     try:
@@ -288,6 +302,88 @@ def get_marks_by_os(os_number):
 
 
 # ============================================================
+# ВСЕ ОС С МАРКАМИ
+# ============================================================
+
+@st.cache_data(ttl=60)
+def get_all_os():
+
+    query = """
+    SELECT
+        l.locationname AS "Место",
+        so.barcode AS "Номер ОС",
+        m.nameen AS "Артикул",
+        m.nameru AS "Наименование",
+        st.nameru AS "Вид запаса",
+        count(DISTINCT s.cis_code) AS "Количество КМ",
+        count(DISTINCT s.parentcis_id) AS "Количество КИТУ",
+        count(w.basequantity) AS "Количество штук",
+        hw.documentnumber AS "Входящая поставка"
+
+    FROM cis.stock AS s
+
+    JOIN storageobjects AS so
+        ON s.storageobject_id = so.tid
+
+    JOIN warehousesummary AS w
+        ON so.tid = w.storageobject_id
+
+    JOIN materials AS m
+        ON w.material_id = m.tid
+
+    JOIN stocktypes AS st
+        ON w.stocktype_id = st.tid
+
+    JOIN locations AS l
+        ON so.location_id = l.tid
+
+    LEFT JOIN tbl_warehouseincomeobjects AS tw
+        ON so.tid = tw.storageobject_id
+
+    LEFT JOIN hdr_warehouseincome AS hw
+        ON tw.transaction_id = hw.transaction_id
+
+    WHERE
+        s.parentcis_id IS NOT NULL
+        AND m.isam = '1'
+        AND s.barcodeobject_id = w.barcodeobject_id
+
+    GROUP BY
+        l.locationname,
+        so.barcode,
+        m.nameen,
+        m.nameru,
+        st.nameru,
+        hw.documentnumber
+
+    ORDER BY
+        so.barcode;
+    """
+
+    try:
+
+        with get_db_connection() as conn:
+
+            with conn.cursor(
+                cursor_factory=RealDictCursor
+            ) as cur:
+
+                cur.execute(query)
+
+                results = cur.fetchall()
+
+                return pd.DataFrame(results)
+
+    except Exception as e:
+
+        st.error(
+            f"Ошибка получения всех ОС: {e}"
+        )
+
+        return pd.DataFrame()
+
+
+# ============================================================
 # EXCEL
 # ============================================================
 
@@ -312,6 +408,175 @@ def dataframe_to_excel(
     excel_buffer.seek(0)
 
     return excel_buffer.getvalue()
+
+
+# ============================================================
+# ПОИСК ПО ТАБЛИЦЕ
+# ============================================================
+
+def filter_dataframe(
+    df,
+    key,
+    sheet_name
+):
+
+    # --------------------------------------------------------
+    # СОСТОЯНИЕ ПОИСКА
+    # --------------------------------------------------------
+
+    if f"{key}_applied" not in st.session_state:
+
+        st.session_state[
+            f"{key}_applied"
+        ] = ""
+
+    # --------------------------------------------------------
+    # ПРИМЕНИТЬ ПОИСК
+    # --------------------------------------------------------
+
+    def apply_search():
+
+        st.session_state[
+            f"{key}_applied"
+        ] = st.session_state.get(
+            key,
+            ""
+        )
+
+    # --------------------------------------------------------
+    # ОЧИСТИТЬ ПОИСК
+    # --------------------------------------------------------
+
+    def clear_search():
+
+        st.session_state[key] = ""
+
+        st.session_state[
+            f"{key}_applied"
+        ] = ""
+
+    # ========================================================
+    # СТРОКА: ПОИСК + НАЙТИ + ОЧИСТИТЬ + СКАЧАТЬ
+    # ========================================================
+
+    col1, col2, col3, col4 = st.columns(
+        [6, 1.2, 1.2, 1.2]
+    )
+
+    # --------------------------------------------------------
+    # ПОЛЕ ПОИСКА
+    # --------------------------------------------------------
+
+    with col1:
+
+        st.text_input(
+            label="",
+            key=key,
+            placeholder="Введите значение для поиска...",
+            on_change=apply_search
+        )
+
+    # --------------------------------------------------------
+    # КНОПКА НАЙТИ
+    # --------------------------------------------------------
+
+    with col2:
+
+        st.markdown(
+            """
+            <div style="height: 28px;"></div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.button(
+            "🔎 Найти",
+            key=f"{key}_search",
+            use_container_width=True,
+            on_click=apply_search
+        )
+
+    # --------------------------------------------------------
+    # КНОПКА ОЧИСТИТЬ
+    # --------------------------------------------------------
+
+    with col3:
+
+        st.markdown(
+            """
+            <div style="height: 28px;"></div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.button(
+            "✖ Очистить",
+            key=f"{key}_clear",
+            use_container_width=True,
+            on_click=clear_search
+        )
+
+    # ========================================================
+    # ФИЛЬТРАЦИЯ
+    # ========================================================
+
+    df_filtered = df
+
+    search_text = st.session_state[
+        f"{key}_applied"
+    ]
+
+    if search_text:
+
+        search_text = search_text.lower()
+
+        mask = df.astype(str).apply(
+            lambda column: column.str.contains(
+                search_text,
+                case=False,
+                na=False,
+                regex=False
+            )
+        ).any(axis=1)
+
+        df_filtered = df[mask]
+
+    # ========================================================
+    # EXCEL
+    # ========================================================
+
+    excel_data = dataframe_to_excel(
+        df_filtered,
+        sheet_name
+    )
+
+    # --------------------------------------------------------
+    # КНОПКА СКАЧИВАНИЯ
+    # --------------------------------------------------------
+
+    with col4:
+
+        st.markdown(
+            """
+            <div style="height: 28px;"></div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.download_button(
+            "⇩ Скачать",
+            data=excel_data,
+            file_name="chestny_znak_all_os.xlsx",
+            mime=(
+                "application/vnd.openxmlformats-"
+                "officedocument.spreadsheetml.sheet"
+            ),
+            key=f"download_{key}",
+            use_container_width=True,
+            help="Скачать таблицу в Excel"
+        )
+
+    return df_filtered
 
 
 # ============================================================
@@ -362,14 +627,29 @@ if "chz_os_data_loaded" not in st.session_state:
     st.session_state.chz_os_data_loaded = False
 
 
+# ------------------------------------------------------------
+# Все ОС
+# ------------------------------------------------------------
+
+if "chz_all_os_data" not in st.session_state:
+
+    st.session_state.chz_all_os_data = pd.DataFrame()
+
+
+if "chz_all_os_data_loaded" not in st.session_state:
+
+    st.session_state.chz_all_os_data_loaded = False
+
+
 # ============================================================
 # ВКЛАДКИ
 # ============================================================
 
-tab_accepted, tab_search_os, tab_problems = st.tabs(
+tab_accepted, tab_search_os, tab_all_os, tab_problems = st.tabs(
     [
         "🏷️ Принятые марки",
         "🔎 Подробная информация по ОС",
+        "📦 Все ОС с марками",
         "⚠️ Проблемы"
     ]
 )
@@ -530,24 +810,20 @@ with tab_accepted:
                 column_config={
 
                     "Номер ОС": st.column_config.TextColumn(
-                        "Номер ОС",
-                        width="medium"
+                        "Номер ОС"
                     ),
 
                     "КИ": st.column_config.TextColumn(
-                        "КИ",
-                        width="large"
+                        "КИ"
                     ),
 
                     "КИТУ": st.column_config.TextColumn(
-                        "КИТУ",
-                        width="large"
+                        "КИТУ"
                     ),
 
                     "Дата приемки": st.column_config.DateColumn(
                         "Дата приемки",
-                        format="DD.MM.YYYY",
-                        width="medium"
+                        format="DD.MM.YYYY"
                     )
                 }
             )
@@ -588,7 +864,7 @@ with tab_accepted:
 
 
 # ============================================================
-# ВКЛАДКА — Подробная информация по ОС
+# ВКЛАДКА — ПОДРОБНАЯ ИНФОРМАЦИЯ ПО ОС
 # ============================================================
 
 with tab_search_os:
@@ -748,10 +1024,6 @@ with tab_search_os:
 
     if current_os:
 
-        # ----------------------------------------------------
-        # Загружаем только если ещё не загружали
-        # ----------------------------------------------------
-
         if not st.session_state.chz_os_data_loaded:
 
             with st.spinner(
@@ -833,50 +1105,41 @@ with tab_search_os:
                 column_config={
 
                     "Место": st.column_config.TextColumn(
-                        "Место",
-                        width="medium"
+                        "Место"
                     ),
 
                     "Номер ОС": st.column_config.TextColumn(
-                        "Номер ОС",
-                        width="large"
+                        "Номер ОС"
                     ),
 
                     "Артикул": st.column_config.TextColumn(
-                        "Артикул",
-                        width="large"
+                        "Артикул"
                     ),
 
                     "Наименование": st.column_config.TextColumn(
-                        "Наименование",
-                        width="medium"
+                        "Наименование"
                     ),
 
                     "Вид запаса": st.column_config.TextColumn(
-                        "Вид запаса",
-                        width="large"
+                        "Вид запаса"
                     ),
 
                     "КИ": st.column_config.TextColumn(
-                        "КИ",
-                        width="large"
+                        "КИ"
                     ),
 
                     "КИТУ": st.column_config.TextColumn(
-                        "КИТУ",
-                        width="large"
+                        "КИТУ"
                     ),
 
                     "Дата приемки": st.column_config.DateColumn(
                         "Дата приемки",
-                        format="DD.MM.YYYY",
-                        width="medium"
+                        format="DD.MM.YYYY"
                     ),
 
                     "Входящая поставка": st.column_config.TextColumn(
-                        "Входящая поставка",
-                        width="large"
-                    ),
+                        "Входящая поставка"
+                    )
 
                 }
             )
@@ -912,6 +1175,190 @@ with tab_search_os:
                     key="chz_os_download",
                     use_container_width=True
                 )
+
+
+# ============================================================
+# ВКЛАДКА — ВСЕ ОС
+# ============================================================
+
+with tab_all_os:
+
+    st.caption(
+        "Все ОС с маркированной продукцией."
+    )
+
+    # ========================================================
+    # ЗАГРУЗКА ДАННЫХ
+    # ========================================================
+
+    col_load_all = st.columns(
+        [1]
+    )[0]
+
+    with col_load_all:
+
+        load_all_os_clicked = st.button(
+            "🔎 Загрузить данные",
+            key="chz_all_os_search",
+            type="primary",
+            use_container_width=True
+        )
+
+    # ========================================================
+    # ЗАГРУЗКА
+    # ========================================================
+
+    if load_all_os_clicked:
+
+        with st.spinner(
+            "Получение всех ОС..."
+        ):
+
+            df_all_os = get_all_os()
+
+        st.session_state.chz_all_os_data = df_all_os
+        st.session_state.chz_all_os_data_loaded = True
+
+        # После новой загрузки очищаем предыдущий поиск
+        st.session_state.chz_all_os_search_input = ""
+        st.session_state.chz_all_os_search_input_applied = ""
+
+    # ========================================================
+    # ВЫВОД ДАННЫХ
+    # ========================================================
+
+    if st.session_state.chz_all_os_data_loaded:
+
+        df_all_os = st.session_state.chz_all_os_data
+
+        if df_all_os.empty:
+
+            st.info(
+                "Маркированных ОС не найдено."
+            )
+
+        else:
+
+            # =================================================
+            # ПОИСК + ОЧИСТКА + СКАЧИВАНИЕ
+            # =================================================
+
+            df_display_all_os = filter_dataframe(
+                df_all_os,
+                "chz_all_os_search_input",
+                "Все ОС"
+            )
+
+            st.markdown("---")
+
+            # =================================================
+            # СЧЁТЧИКИ
+            # =================================================
+
+            count_all_col1, count_all_col2, count_all_col3 = (
+                st.columns(3)
+            )
+
+            with count_all_col1:
+
+                st.metric(
+                    "📦 Всего ОС",
+                    f"{df_all_os['Номер ОС'].nunique():,}".replace(
+                        ",",
+                        " "
+                    )
+                )
+
+            with count_all_col2:
+
+                st.metric(
+                    "🏷️ Всего КМ",
+                    f"{df_all_os['Количество КМ'].sum():,}".replace(
+                        ",",
+                        " "
+                    )
+                )
+
+            with count_all_col3:
+
+                st.metric(
+                    "🏷️ Всего КИТУ",
+                    f"{df_all_os['Количество КИТУ'].sum():,}".replace(
+                        ",",
+                        " "
+                    )
+                )
+
+            # =================================================
+            # РЕЗУЛЬТАТ ПОИСКА
+            # =================================================
+
+            if (
+                st.session_state[
+                    "chz_all_os_search_input_applied"
+                ]
+            ):
+
+                st.caption(
+                    f"🔎 Найдено строк: "
+                    f"{len(df_display_all_os):,}".replace(
+                        ",",
+                        " "
+                    )
+                )
+
+            st.markdown("---")
+
+            # =================================================
+            # ТАБЛИЦА
+            # =================================================
+
+            st.dataframe(
+                df_display_all_os,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+
+                    "Место": st.column_config.TextColumn(
+                        "Место"
+                    ),
+
+                    "Номер ОС": st.column_config.TextColumn(
+                        "Номер ОС"
+                    ),
+
+                    "Артикул": st.column_config.TextColumn(
+                        "Артикул"
+                    ),
+
+                    "Наименование": st.column_config.TextColumn(
+                        "Наименование"
+                    ),
+
+                    "Вид запаса": st.column_config.TextColumn(
+                        "Вид запаса"
+                    ),
+
+                    "Количество КМ": st.column_config.NumberColumn(
+                        "Количество КМ",
+                        format="%d"
+                    ),
+
+                    "Количество КИТУ": st.column_config.NumberColumn(
+                        "Количество КИТУ",
+                        format="%d"
+                    ),
+
+                    "Количество штук": st.column_config.NumberColumn(
+                        "Количество штук",
+                        format="%d"
+                    ),
+
+                    "Входящая поставка": st.column_config.TextColumn(
+                        "Входящая поставка"
+                    )
+                }
+            )
 
 
 # ============================================================
