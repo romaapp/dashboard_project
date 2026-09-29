@@ -227,25 +227,36 @@ def search_os(search_value):
 def get_marks_by_os(os_number):
 
     query = """
-    SELECT
-        so.barcode AS "Номер ОС",
-        s.cis_code AS "КИ",
-        pc.cis_code AS "КИТУ",
-        s.receiptdate::date AS "Дата приемки"
-
-    FROM cis.stock AS s
-
-    JOIN storageobjects AS so
-        ON s.storageobject_id = so.tid
-
-    JOIN cis.stock AS pc
-        ON s.parentcis_id::text = pc.cis_id::text
-
-    WHERE
-        so.barcode = %s
-
-    ORDER BY
-        s.receiptdate;
+    select distinct l.locationname as "Место",
+        so.barcode as "Номер ОС",
+        m.nameen as "Артикул",
+        m.nameru as "Наименование",
+        st.nameru as "Вид запаса",
+        s.cis_code as "КИ", 
+        pc.cis_code as "КИТУ", 
+        s.receiptdate::date as "Дата приемки",
+        hw.documentnumber as "Входящая поставка"
+    from cis.stock as s
+        join storageobjects as so on
+        s.storageobject_id = so.tid
+        join cis.stock as pc on
+        s.parentcis_id::text = pc.cis_id::text
+        join warehousesummary as w on
+        so.tid = w.storageobject_id
+        join materials as m on
+        w.material_id = m.tid
+        join stocktypes as st on
+        w.stocktype_id = st.tid
+        join locations as l on
+        so.location_id = l.tid
+        left join tbl_warehouseincomeobjects as tw on
+        so.tid = tw.storageobject_id
+        left join hdr_warehouseincome as hw on
+        tw.transaction_id = hw.transaction_id
+    where m.isam = '1' 
+        and s.barcodeobject_id = w.barcodeobject_id
+        and so.barcode = %s
+    order by m.nameen;
     """
 
     try:
@@ -358,7 +369,7 @@ if "chz_os_data_loaded" not in st.session_state:
 tab_accepted, tab_search_os, tab_problems = st.tabs(
     [
         "🏷️ Принятые марки",
-        "🔎 Поиск марок по ОС",
+        "🔎 Подробная информация по ОС",
         "⚠️ Проблемы"
     ]
 )
@@ -577,7 +588,7 @@ with tab_accepted:
 
 
 # ============================================================
-# ВКЛАДКА — ПОИСК МАРОК ПО ОС
+# ВКЛАДКА — Подробная информация по ОС
 # ============================================================
 
 with tab_search_os:
@@ -821,9 +832,29 @@ with tab_search_os:
                 hide_index=True,
                 column_config={
 
+                    "Место": st.column_config.TextColumn(
+                        "Место",
+                        width="medium"
+                    ),
+
                     "Номер ОС": st.column_config.TextColumn(
                         "Номер ОС",
+                        width="large"
+                    ),
+
+                    "Артикул": st.column_config.TextColumn(
+                        "Артикул",
+                        width="large"
+                    ),
+
+                    "Наименование": st.column_config.TextColumn(
+                        "Наименование",
                         width="medium"
+                    ),
+
+                    "Вид запаса": st.column_config.TextColumn(
+                        "Вид запаса",
+                        width="large"
                     ),
 
                     "КИ": st.column_config.TextColumn(
@@ -840,7 +871,13 @@ with tab_search_os:
                         "Дата приемки",
                         format="DD.MM.YYYY",
                         width="medium"
-                    )
+                    ),
+
+                    "Входящая поставка": st.column_config.TextColumn(
+                        "Входящая поставка",
+                        width="large"
+                    ),
+
                 }
             )
 
