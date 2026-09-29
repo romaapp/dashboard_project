@@ -24,7 +24,7 @@ st.set_page_config(
 pages = [
     st.Page(
         "pages/Главная страница.py",
-        title="🏠 Главная страница"
+        title="🏠 Главная страница",
     ),
 
     st.Page(
