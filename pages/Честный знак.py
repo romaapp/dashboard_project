@@ -315,21 +315,20 @@ def get_all_os():
         m.nameen AS "Артикул",
         m.nameru AS "Наименование",
         st.nameru AS "Вид запаса",
-        count(DISTINCT s.cis_code) AS "Количество КМ",
-        count(DISTINCT s.parentcis_id) AS "Количество КИТУ",
-        count(w.basequantity) AS "Количество штук",
+        COALESCE(s.cnt_km, 0) AS "Количество КМ",
+        COALESCE(s.cnt_kitu, 0) AS "Количество КИТУ",
+        SUM(w.basequantity) AS "Количество штук",
         hw.documentnumber AS "Входящая поставка"
 
-    FROM cis.stock AS s
-
-    JOIN storageobjects AS so
-        ON s.storageobject_id = so.tid
+    FROM storageobjects AS so
 
     JOIN warehousesummary AS w
         ON so.tid = w.storageobject_id
+        AND w.basequantity > 0
 
     JOIN materials AS m
         ON w.material_id = m.tid
+        AND m.isam = '1'
 
     JOIN stocktypes AS st
         ON w.stocktype_id = st.tid
@@ -337,16 +336,26 @@ def get_all_os():
     JOIN locations AS l
         ON so.location_id = l.tid
 
+    JOIN (
+        SELECT
+            storageobject_id,
+            barcodeobject_id,
+            COUNT(DISTINCT cis_code) AS cnt_km,
+            COUNT(DISTINCT parentcis_id) AS cnt_kitu
+        FROM cis.stock
+        WHERE parentcis_id IS NOT NULL
+        GROUP BY
+            storageobject_id,
+            barcodeobject_id
+    ) AS s
+        ON s.storageobject_id = so.tid
+        AND s.barcodeobject_id = w.barcodeobject_id
+
     LEFT JOIN tbl_warehouseincomeobjects AS tw
         ON so.tid = tw.storageobject_id
 
     LEFT JOIN hdr_warehouseincome AS hw
         ON tw.transaction_id = hw.transaction_id
-
-    WHERE
-        s.parentcis_id IS NOT NULL
-        AND m.isam = '1'
-        AND s.barcodeobject_id = w.barcodeobject_id
 
     GROUP BY
         l.locationname,
@@ -354,6 +363,8 @@ def get_all_os():
         m.nameen,
         m.nameru,
         st.nameru,
+        s.cnt_km,
+        s.cnt_kitu,
         hw.documentnumber
 
     ORDER BY
@@ -378,6 +389,102 @@ def get_all_os():
 
         st.error(
             f"Ошибка получения всех ОС: {e}"
+        )
+
+        return pd.DataFrame()
+
+
+# ============================================================
+# ВСЕ ОС С ЧЕСТНЫМ ЗНАКОМ
+# ============================================================
+
+@st.cache_data(ttl=60)
+def get_all_os_with_chz():
+
+    query = """
+    SELECT
+        l.locationname AS "Место",
+        so.barcode AS "Номер ОС",
+        m.nameen AS "Артикул",
+        m.nameru AS "Наименование",
+        st.nameru AS "Вид запаса",
+
+        COALESCE(s.cnt_km, 0) AS "Количество КМ",
+        COALESCE(s.cnt_kitu, 0) AS "Количество КИТУ",
+
+        SUM(w.basequantity) AS "Количество штук",
+
+        hw.documentnumber AS "Входящая поставка"
+
+    FROM storageobjects AS so
+
+    JOIN warehousesummary AS w
+        ON so.tid = w.storageobject_id
+        AND w.basequantity > 0
+
+    JOIN materials AS m
+        ON w.material_id = m.tid
+        AND m.isam = '1'
+
+    JOIN stocktypes AS st
+        ON w.stocktype_id = st.tid
+
+    JOIN locations AS l
+        ON so.location_id = l.tid
+
+    LEFT JOIN (
+        SELECT
+            storageobject_id,
+            barcodeobject_id,
+            COUNT(DISTINCT cis_code) AS cnt_km,
+            COUNT(DISTINCT parentcis_id) AS cnt_kitu
+        FROM cis.stock
+        WHERE parentcis_id IS NOT NULL
+        GROUP BY
+            storageobject_id,
+            barcodeobject_id
+    ) AS s
+        ON s.storageobject_id = so.tid
+        AND s.barcodeobject_id = w.barcodeobject_id
+
+    LEFT JOIN tbl_warehouseincomeobjects AS tw
+        ON so.tid = tw.storageobject_id
+
+    LEFT JOIN hdr_warehouseincome AS hw
+        ON tw.transaction_id = hw.transaction_id
+
+    GROUP BY
+        l.locationname,
+        so.barcode,
+        m.nameen,
+        m.nameru,
+        st.nameru,
+        s.cnt_km,
+        s.cnt_kitu,
+        hw.documentnumber
+
+    ORDER BY
+        so.barcode;
+    """
+
+    try:
+
+        with get_db_connection() as conn:
+
+            with conn.cursor(
+                cursor_factory=RealDictCursor
+            ) as cur:
+
+                cur.execute(query)
+
+                results = cur.fetchall()
+
+                return pd.DataFrame(results)
+
+    except Exception as e:
+
+        st.error(
+            f"Ошибка получения всех ОС с ЧЗ: {e}"
         )
 
         return pd.DataFrame()
@@ -641,15 +748,30 @@ if "chz_all_os_data_loaded" not in st.session_state:
     st.session_state.chz_all_os_data_loaded = False
 
 
+# ------------------------------------------------------------
+# Все ОС с ЧЗ
+# ------------------------------------------------------------
+
+if "chz_all_os_chz_data" not in st.session_state:
+
+    st.session_state.chz_all_os_chz_data = pd.DataFrame()
+
+
+if "chz_all_os_chz_data_loaded" not in st.session_state:
+
+    st.session_state.chz_all_os_chz_data_loaded = False
+
+
 # ============================================================
 # ВКЛАДКИ
 # ============================================================
 
-tab_accepted, tab_search_os, tab_all_os, tab_problems = st.tabs(
+tab_accepted, tab_search_os, tab_all_os, tab_all_os_chz, tab_problems = st.tabs(
     [
         "🏷️ Принятые марки",
         "🔎 Подробная информация по ОС",
         "📦 Все ОС с марками",
+        "📦 Все ОС с маркировкой",
         "⚠️ Проблемы"
     ]
 )
@@ -1315,6 +1437,239 @@ with tab_all_os:
 
             st.dataframe(
                 df_display_all_os,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+
+                    "Место": st.column_config.TextColumn(
+                        "Место"
+                    ),
+
+                    "Номер ОС": st.column_config.TextColumn(
+                        "Номер ОС"
+                    ),
+
+                    "Артикул": st.column_config.TextColumn(
+                        "Артикул"
+                    ),
+
+                    "Наименование": st.column_config.TextColumn(
+                        "Наименование"
+                    ),
+
+                    "Вид запаса": st.column_config.TextColumn(
+                        "Вид запаса"
+                    ),
+
+                    "Количество КМ": st.column_config.NumberColumn(
+                        "Количество КМ",
+                        format="%d"
+                    ),
+
+                    "Количество КИТУ": st.column_config.NumberColumn(
+                        "Количество КИТУ",
+                        format="%d"
+                    ),
+
+                    "Количество штук": st.column_config.NumberColumn(
+                        "Количество штук",
+                        format="%d"
+                    ),
+
+                    "Входящая поставка": st.column_config.TextColumn(
+                        "Входящая поставка"
+                    )
+                }
+            )
+
+
+# ============================================================
+# ВКЛАДКА — ВСЕ ОС С МАРКИРОВАННЫМ ТОВАРОМ
+# ============================================================
+
+with tab_all_os_chz:
+
+    st.caption(
+        "Все ОС, содержащие маркированную продукцию "
+        "«Честного знака»."
+    )
+
+    # ========================================================
+    # ЗАГРУЗКА ДАННЫХ
+    # ========================================================
+
+    col_load_all_chz = st.columns(
+        [1]
+    )[0]
+
+    with col_load_all_chz:
+
+        load_all_os_chz_clicked = st.button(
+            "🔎 Загрузить данные",
+            key="chz_all_os_chz_search",
+            type="primary",
+            use_container_width=True
+        )
+
+    # ========================================================
+    # ЗАГРУЗКА
+    # ========================================================
+
+    if load_all_os_chz_clicked:
+
+        with st.spinner(
+            "Получение всех ОС с ЧЗ..."
+        ):
+
+            df_all_os_chz = get_all_os_with_chz()
+
+        st.session_state.chz_all_os_chz_data = (
+            df_all_os_chz
+        )
+
+        st.session_state.chz_all_os_chz_data_loaded = True
+
+        # После новой загрузки очищаем предыдущий поиск
+
+        st.session_state.chz_all_os_chz_search_input = ""
+
+        st.session_state.chz_all_os_chz_search_input_applied = ""
+
+    # ========================================================
+    # ВЫВОД ДАННЫХ
+    # ========================================================
+
+    if st.session_state.chz_all_os_chz_data_loaded:
+
+        df_all_os_chz = (
+            st.session_state.chz_all_os_chz_data
+        )
+
+        if df_all_os_chz.empty:
+
+            st.info(
+                "ОС с маркированной продукцией "
+                "«Честного знака» не найдено."
+            )
+
+        else:
+
+            # =================================================
+            # ПОИСК + ОЧИСТКА + СКАЧИВАНИЕ
+            # =================================================
+
+            df_display_all_os_chz = filter_dataframe(
+                df_all_os_chz,
+                "chz_all_os_chz_search_input",
+                "Все ОС с ЧЗ"
+            )
+
+            st.markdown("---")
+
+            # =================================================
+            # СЧЁТЧИКИ
+            # =================================================
+
+            # Все уникальные ОС
+            total_os = df_all_os_chz["Номер ОС"].nunique()
+
+            # ОС, у которых есть хотя бы одна маркированная позиция
+            marked_os = (
+                df_all_os_chz.loc[
+                    pd.to_numeric(
+                        df_all_os_chz["Количество КМ"],
+                        errors="coerce"
+                    ).fillna(0) > 0,
+                    "Номер ОС"
+                ]
+                .nunique()
+            )
+
+            # Немаркированные ОС = все ОС минус маркированные
+            unmarked_os = total_os - marked_os
+
+
+            # =================================================
+            # ОСТАЛОСЬ ПРОМАРКИРОВАТЬ ШТУК
+            # =================================================
+
+            total_pieces = (
+                pd.to_numeric(
+                    df_all_os_chz["Количество штук"],
+                    errors="coerce"
+                )
+                .fillna(0)
+                .sum()
+            )
+
+            total_km = (
+                pd.to_numeric(
+                    df_all_os_chz["Количество КМ"],
+                    errors="coerce"
+                )
+                .fillna(0)
+                .sum()
+            )
+
+            remaining_to_mark = round(total_pieces - total_km)
+
+
+            # =================================================
+            # ОТОБРАЖЕНИЕ СЧЁТЧИКОВ
+            # =================================================
+
+            count_chz_col1, count_chz_col2, count_chz_col3, count_chz_col4 = st.columns(4)
+
+            with count_chz_col1:
+                st.metric(
+                    "📦 Всего ОС",
+                    f"{total_os:,}".replace(",", " ")
+                )
+
+            with count_chz_col2:
+                st.metric(
+                    "🏷️ Маркированных ОС",
+                    f"{marked_os:,}".replace(",", " ")
+                )
+
+            with count_chz_col3:
+                st.metric(
+                    "📦 Немаркированных ОС",
+                    f"{unmarked_os:,}".replace(",", " ")
+                )
+
+            with count_chz_col4:
+                st.metric(
+                    "🔖 Осталось промаркировать штук",
+                    f"{remaining_to_mark:,}".replace(",", " ")
+                )
+
+            # =================================================
+            # РЕЗУЛЬТАТ ПОИСКА
+            # =================================================
+
+            if (
+                st.session_state[
+                    "chz_all_os_chz_search_input_applied"
+                ]
+            ):
+
+                st.caption(
+                    f"🔎 Найдено строк: "
+                    f"{len(df_display_all_os_chz):,}".replace(
+                        ",",
+                        " "
+                    )
+                )
+
+            st.markdown("---")
+
+            # =================================================
+            # ТАБЛИЦА
+            # =================================================
+
+            st.dataframe(
+                df_display_all_os_chz,
                 use_container_width=True,
                 hide_index=True,
                 column_config={
