@@ -35,7 +35,7 @@ load_css()
 # ============================================================
 
 def get_daily_visitors():
-    """Получает количество уникальных посетителей по дням."""
+    """Получает количество уникальных пользователей по дням."""
 
     conn = None
 
@@ -49,13 +49,9 @@ def get_daily_visitors():
             """
             SELECT
                 DATE(timestamp) AS Дата,
-                COUNT(DISTINCT ip_address) AS Пользователей
+                COUNT(DISTINCT user_id) AS Пользователей
             FROM user_actions
-            WHERE ip_address IS NOT NULL
-            AND ip_address NOT IN (
-                'unknown',
-                '127.0.0.1'
-            )
+            WHERE user_id IS NOT NULL
             GROUP BY DATE(timestamp)
             ORDER BY Дата DESC
             LIMIT 30
@@ -149,13 +145,11 @@ def users_management():
         "пользователей, изменять их статус и удалять учетные записи."
     )
 
-
     # ========================================================
     # ПОЛУЧАЕМ ВСЕХ ПОЛЬЗОВАТЕЛЕЙ
     # ========================================================
 
     users = logger.get_all_users()
-
 
     if not users:
 
@@ -164,7 +158,6 @@ def users_management():
         )
 
         return
-
 
     # ========================================================
     # ТАБЛИЦА ПОЛЬЗОВАТЕЛЕЙ
@@ -182,13 +175,11 @@ def users_management():
             last_login
         ) = user
 
-
         status = (
             "✔ Активен"
             if bool(is_active)
             else "⭕ Отключён"
         )
-
 
         users_data.append(
             {
@@ -204,11 +195,9 @@ def users_management():
             }
         )
 
-
     df_users = pd.DataFrame(
         users_data
     )
-
 
     st.dataframe(
         df_users[
@@ -223,9 +212,7 @@ def users_management():
         hide_index=True
     )
 
-
     st.divider()
-
 
     # ========================================================
     # ВЫБОР ПОЛЬЗОВАТЕЛЯ
@@ -235,12 +222,10 @@ def users_management():
         "⚙️ Управление учетной записью"
     )
 
-
     user_options = {
         user[1]: user
         for user in users
     }
-
 
     selected_login = st.selectbox(
         "Выберите пользователя:",
@@ -248,11 +233,9 @@ def users_management():
         key="admin_selected_user"
     )
 
-
     selected_user = user_options[
         selected_login
     ]
-
 
     (
         selected_user_id,
@@ -262,13 +245,11 @@ def users_management():
         selected_last_login
     ) = selected_user
 
-
     # ========================================================
     # ИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ
     # ========================================================
 
     col1, col2, col3 = st.columns(3)
-
 
     with col1:
 
@@ -276,7 +257,6 @@ def users_management():
             "👤 Пользователь",
             selected_user_login
         )
-
 
     with col2:
 
@@ -287,14 +267,12 @@ def users_management():
             else "⭕ Отключён"
         )
 
-
     with col3:
 
         st.metric(
             "🆔 ID",
             selected_user_id
         )
-
 
     st.caption(
         f"📅 Регистрация: "
@@ -304,9 +282,7 @@ def users_management():
         f"{selected_last_login or '—'}"
     )
 
-
     st.divider()
-
 
     # ========================================================
     # КНОПКИ УПРАВЛЕНИЯ
@@ -315,7 +291,6 @@ def users_management():
     col_activate, col_delete = st.columns(
         2
     )
-
 
     # ========================================================
     # АКТИВАЦИЯ / ОТКЛЮЧЕНИЕ
@@ -363,7 +338,6 @@ def users_management():
 
                 st.rerun()
 
-
     # ========================================================
     # УДАЛЕНИЕ
     # ========================================================
@@ -379,7 +353,6 @@ def users_management():
             st.session_state[
                 "confirm_delete_user"
             ] = True
-
 
     # ========================================================
     # ПОДТВЕРЖДЕНИЕ УДАЛЕНИЯ
@@ -400,11 +373,9 @@ def users_management():
             "в статистике дашборда при этом сохранится."
         )
 
-
         col_confirm, col_cancel = st.columns(
             2
         )
-
 
         with col_confirm:
 
@@ -429,7 +400,6 @@ def users_management():
                 )
 
                 st.rerun()
-
 
         with col_cancel:
 
@@ -461,7 +431,6 @@ def main():
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     )
 
-
     # ========================================================
     # ПОЛУЧАЕМ ПРЕДЛОЖЕНИЯ
     # ========================================================
@@ -469,7 +438,6 @@ def main():
     all_suggestions = get_suggestions(
         "all"
     )
-
 
     # ========================================================
     # СЧИТАЕМ НОВЫЕ ПРЕДЛОЖЕНИЯ
@@ -481,7 +449,6 @@ def main():
         if not bool(suggestion[5])
     )
 
-
     # ========================================================
     # КНОПКА ВОЗВРАТА + ИНДИКАТОР НОВЫХ ПРЕДЛОЖЕНИЙ
     # ========================================================
@@ -489,7 +456,6 @@ def main():
     col_home, col_spacer, col_suggestions = st.columns(
         [1, 3, 2]
     )
-
 
     # --------------------------------------------------------
     # НА ГЛАВНУЮ
@@ -504,7 +470,6 @@ def main():
             st.switch_page(
                 "pages/Главная страница.py"
             )
-
 
     # --------------------------------------------------------
     # НОВЫЕ ПРЕДЛОЖЕНИЯ
@@ -543,7 +508,6 @@ def main():
                 unsafe_allow_html=True
             )
 
-
     # ========================================================
     # ВКЛАДКИ
     # ========================================================
@@ -562,26 +526,19 @@ def main():
         ]
     )
 
-
     # ========================================================
     # ВКЛАДКА 1 — СТАТИСТИКА
     # ========================================================
 
     with tab_statistics:
 
-        # ----------------------------------------------------
-        # ПОЛУЧАЕМ СТАТИСТИКУ
-        # ----------------------------------------------------
-
         stats = logger.get_statistics()
-
 
         # ----------------------------------------------------
         # ВЕРХНИЕ МЕТРИКИ
         # ----------------------------------------------------
 
         col1, col2, col3, col4, col5 = st.columns(5)
-
 
         with col1:
 
@@ -590,14 +547,12 @@ def main():
                 stats["unique_visitors"]
             )
 
-
         with col2:
 
             st.metric(
                 "📊 Всего действий",
                 stats["total_actions"]
             )
-
 
         with col3:
 
@@ -606,14 +561,12 @@ def main():
                 stats["unique_sessions"]
             )
 
-
         with col4:
 
             st.metric(
                 "📅 Действий сегодня",
                 stats["today_actions"]
             )
-
 
         with col5:
 
@@ -622,16 +575,13 @@ def main():
                 stats["today_visitors"]
             )
 
-
         st.divider()
-
 
         # ----------------------------------------------------
         # ПОПУЛЯРНЫЕ ОТЧЕТЫ
         # ----------------------------------------------------
 
         col1, col2 = st.columns(2)
-
 
         with col1:
 
@@ -654,7 +604,6 @@ def main():
                     use_container_width=True
                 )
 
-
                 if len(df_popular) > 0:
 
                     fig = px.bar(
@@ -675,7 +624,6 @@ def main():
                 st.info(
                     "Нет данных о просмотренных отчетах"
                 )
-
 
         # ----------------------------------------------------
         # ЕЖЕДНЕВНАЯ АКТИВНОСТЬ
@@ -705,7 +653,6 @@ def main():
                     "Дата"
                 )
 
-
                 # --------------------------------------------
                 # АКТИВНОСТЬ ПО ДНЯМ
                 # --------------------------------------------
@@ -722,12 +669,10 @@ def main():
                     height=400
                 )
 
-
                 st.plotly_chart(
                     fig,
                     use_container_width=True
                 )
-
 
                 st.dataframe(
                     df_daily,
@@ -740,13 +685,11 @@ def main():
                     "Нет данных об активности"
                 )
 
-
             # ------------------------------------------------
             # ПОЛЬЗОВАТЕЛИ ПО ДНЯМ
             # ------------------------------------------------
 
             df_visitors = get_daily_visitors()
-
 
             if not df_visitors.empty:
 
@@ -757,7 +700,6 @@ def main():
                 df_visitors = df_visitors.sort_values(
                     "Дата"
                 )
-
 
                 fig_visitors = px.line(
                     df_visitors,
@@ -771,12 +713,10 @@ def main():
                     height=400
                 )
 
-
                 st.plotly_chart(
                     fig_visitors,
                     use_container_width=True
                 )
-
 
                 st.dataframe(
                     df_visitors,
@@ -788,7 +728,6 @@ def main():
                 st.info(
                     "Нет данных о пользователях"
                 )
-
 
     # ========================================================
     # ВКЛАДКА 2 — ПОЛЬЗОВАТЕЛИ ОНЛАЙН
@@ -802,7 +741,6 @@ def main():
             "в течение последних 5 минут."
         )
 
-
         # ----------------------------------------------------
         # ПОЛУЧАЕМ ОНЛАЙН ПОЛЬЗОВАТЕЛЕЙ
         # ----------------------------------------------------
@@ -811,13 +749,17 @@ def main():
             minutes=5
         )
 
+        # ----------------------------------------------------
+        # ПОЛУЧАЕМ СТАТИСТИКУ
+        # ----------------------------------------------------
+
+        stats = logger.get_statistics()
 
         # ----------------------------------------------------
         # МЕТРИКИ
         # ----------------------------------------------------
 
         col1, col2, col3 = st.columns(3)
-
 
         with col1:
 
@@ -826,14 +768,12 @@ def main():
                 len(online_users)
             )
 
-
         with col2:
 
             st.metric(
                 "👥 Уникальных посетителей",
                 stats["unique_visitors"]
             )
-
 
         with col3:
 
@@ -842,9 +782,7 @@ def main():
                 stats["today_visitors"]
             )
 
-
         st.divider()
-
 
         # ----------------------------------------------------
         # СПИСОК ОНЛАЙН ПОЛЬЗОВАТЕЛЕЙ
@@ -854,17 +792,17 @@ def main():
             "👁️‍🗨️ Активные пользователи"
         )
 
-
         if online_users:
 
             df_online = pd.DataFrame(
                 online_users,
                 columns=[
+                    "ID",
+                    "Пользователь",
                     "IP адрес",
                     "Последняя активность"
                 ]
             )
-
 
             # -----------------------------------------------
             # ФОРМАТИРУЕМ ВРЕМЯ
@@ -875,18 +813,20 @@ def main():
                 errors="coerce"
             )
 
-
             df_online["Статус"] = "👁️‍🗨️ Онлайн"
 
+            # -----------------------------------------------
+            # ПОРЯДОК КОЛОНОК
+            # -----------------------------------------------
 
             df_online = df_online[
                 [
                     "Статус",
+                    "Пользователь",
                     "IP адрес",
                     "Последняя активность"
                 ]
             ]
-
 
             st.dataframe(
                 df_online,
@@ -900,9 +840,7 @@ def main():
                 "Сейчас активных пользователей нет."
             )
 
-
         st.divider()
-
 
         # ====================================================
         # ПОСЛЕДНИЕ ДЕЙСТВИЯ
@@ -912,13 +850,11 @@ def main():
             "🕐 Последние действия"
         )
 
-
         # ----------------------------------------------------
         # Получаем свежую статистику
         # ----------------------------------------------------
 
         stats = logger.get_statistics()
-
 
         if stats["recent_actions"]:
 
@@ -933,7 +869,6 @@ def main():
                 ]
             )
 
-
             df_actions["Действие"] = df_actions[
                 "Действие"
             ].replace({
@@ -944,42 +879,72 @@ def main():
                 "visit": "Посещение страницы"
             })
 
-
             # ------------------------------------------------
-            # ФИЛЬТР ПО IP
+            # ФИЛЬТР ПО ЛОГИНУ
             # ------------------------------------------------
 
             st.subheader(
-                "🔍 Фильтр по IP адресу"
+                "🔍 Фильтр по пользователю"
             )
 
+            # Получаем зарегистрированных пользователей
+            all_users = logger.get_all_users()
 
-            ip_list = sorted(
-                df_actions[
-                    "IP адрес"
-                ]
-                .dropna()
-                .unique()
-                .tolist()
+            login_list = [
+                user[1]
+                for user in all_users
+                if user[1]
+            ]
+
+            login_list = sorted(
+                set(login_list)
             )
 
+            # Добавляем возможность увидеть действия
+            # без привязанного логина
+            has_empty_login = df_actions[
+                "Пользователь"
+            ].isna().any()
 
-            selected_ip = st.selectbox(
-                "Выберите IP для фильтрации:",
-                ["Все"] + ip_list
+            filter_options = [
+                "Все пользователи"
+            ] + login_list
+
+            if has_empty_login:
+
+                filter_options.append(
+                    "Без логина"
+                )
+
+            selected_login = st.selectbox(
+                "Выберите пользователя:",
+                filter_options,
+                key="admin_recent_actions_login_filter"
             )
 
+            # ------------------------------------------------
+            # ПРИМЕНЯЕМ ФИЛЬТР
+            # ------------------------------------------------
 
-            if selected_ip != "Все":
+            if selected_login == "Все пользователи":
+
+                filtered_df = df_actions
+
+            elif selected_login == "Без логина":
 
                 filtered_df = df_actions[
-                    df_actions["IP адрес"] == selected_ip
+                    df_actions["Пользователь"].isna()
                 ]
 
             else:
 
-                filtered_df = df_actions
+                filtered_df = df_actions[
+                    df_actions["Пользователь"] == selected_login
+                ]
 
+            # ------------------------------------------------
+            # ТАБЛИЦА
+            # ------------------------------------------------
 
             st.dataframe(
                 filtered_df,
@@ -987,13 +952,11 @@ def main():
                 hide_index=True
             )
 
-
         else:
 
             st.info(
                 "Нет записей о действиях"
             )
-
 
     # ========================================================
     # ВКЛАДКА 3 — ПРЕДЛОЖЕНИЯ
@@ -1003,13 +966,11 @@ def main():
 
         suggestions = all_suggestions
 
-
         if not suggestions:
 
             st.info(
                 "Пока нет предложений."
             )
-
 
         else:
 
@@ -1024,7 +985,6 @@ def main():
                 completed_by
             ) in suggestions:
 
-
                 # ------------------------------------------------
                 # СТАРЫЕ ПРЕДЛОЖЕНИЯ БЕЗ ТЕМЫ
                 # ------------------------------------------------
@@ -1034,7 +994,6 @@ def main():
                     title = suggestion.split(
                         "\n"
                     )[0][:80]
-
 
                 # ------------------------------------------------
                 # СТАТУС
@@ -1046,7 +1005,6 @@ def main():
                     else "⌛ В работе"
                 )
 
-
                 # ------------------------------------------------
                 # СВЕРНУТАЯ ЗАЯВКА
                 # ------------------------------------------------
@@ -1056,7 +1014,6 @@ def main():
                     expanded=False
                 ):
 
-
                     # --------------------------------------------
                     # ШАПКА
                     # --------------------------------------------
@@ -1064,7 +1021,6 @@ def main():
                     col1, col2 = st.columns(
                         [8, 2]
                     )
-
 
                     with col1:
 
@@ -1077,7 +1033,6 @@ def main():
                             f"📅 {created_at} • "
                             f"{status}"
                         )
-
 
                     # --------------------------------------------
                     # ВЫПОЛНЕНО
@@ -1094,7 +1049,6 @@ def main():
                             )
                         )
 
-
                         if new_completed != bool(
                             completed
                         ):
@@ -1107,9 +1061,7 @@ def main():
 
                             st.rerun()
 
-
                     st.divider()
-
 
                     # --------------------------------------------
                     # ТЕМА
@@ -1118,7 +1070,6 @@ def main():
                     st.markdown(
                         f"**💡 Тема:** {title}"
                     )
-
 
                     # --------------------------------------------
                     # ТЕКСТ ПРЕДЛОЖЕНИЯ
@@ -1132,7 +1083,6 @@ def main():
                         suggestion
                     )
 
-
                     # --------------------------------------------
                     # ИНФОРМАЦИЯ О ВЫПОЛНЕНИИ
                     # --------------------------------------------
@@ -1144,18 +1094,15 @@ def main():
                             f"{completed_at or ''}"
                         )
 
-
                         if completed_by:
 
                             completion_text += (
                                 f" • {completed_by}"
                             )
 
-
                         st.caption(
                             completion_text
                         )
-
 
                     # --------------------------------------------
                     # ВЛОЖЕНИЯ
@@ -1165,13 +1112,11 @@ def main():
                         suggestion_id
                     )
 
-
                     if files:
 
                         st.markdown(
                             "### 📎 Вложения"
                         )
-
 
                         for file_data in files:
 
@@ -1183,13 +1128,11 @@ def main():
                                 uploaded_at
                             ) = file_data
 
-
                             if not os.path.exists(
                                 file_path
                             ):
 
                                 continue
-
 
                             extension = (
                                 os.path.splitext(
@@ -1197,7 +1140,6 @@ def main():
                                 )[1]
                                 .lower()
                             )
-
 
                             # ------------------------------------
                             # ИЗОБРАЖЕНИЕ
@@ -1221,7 +1163,6 @@ def main():
                                         use_container_width=True
                                     )
 
-
                             # ------------------------------------
                             # ФАЙЛ
                             # ------------------------------------
@@ -1237,7 +1178,6 @@ def main():
                                         file.read()
                                     )
 
-
                                 st.download_button(
                                     f"📎 {original_name}",
                                     data=file_bytes,
@@ -1247,7 +1187,6 @@ def main():
                                         f"{file_id}"
                                     )
                                 )
-
 
                     # --------------------------------------------
                     # УДАЛЕНИЕ
@@ -1274,7 +1213,6 @@ def main():
                             )
 
                             st.rerun()
-
 
     # ========================================================
     # ВКЛАДКА 4 — ПОЛЬЗОВАТЕЛИ

@@ -35,7 +35,7 @@ class DashboardLogger:
     # ============================================================
 
     def _init_db(self):
-        """Создает таблицы для логов и пользователей, если их нет"""
+        """Создает таблицы и выполняет необходимые миграции."""
 
         try:
 
@@ -70,7 +70,7 @@ class DashboardLogger:
             """)
 
             # ----------------------------------------------------
-            # ДОБАВЛЯЕМ USER_ID В СУЩЕСТВУЮЩУЮ ТАБЛИЦУ
+            # ПРОВЕРЯЕМ ПОЛЯ user_actions
             # ----------------------------------------------------
 
             cursor.execute("""
@@ -81,6 +81,10 @@ class DashboardLogger:
                 row[1]
                 for row in cursor.fetchall()
             ]
+
+            # ----------------------------------------------------
+            # USER_ID
+            # ----------------------------------------------------
 
             if "user_id" not in columns:
 
@@ -98,11 +102,32 @@ class DashboardLogger:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     session_id TEXT UNIQUE,
                     ip_address TEXT,
+                    user_id INTEGER,
                     first_visit TEXT,
                     last_visit TEXT,
                     visit_count INTEGER DEFAULT 1
                 )
             """)
+
+            # ----------------------------------------------------
+            # МИГРАЦИЯ СУЩЕСТВУЮЩЕЙ user_sessions
+            # ----------------------------------------------------
+
+            cursor.execute("""
+                PRAGMA table_info(user_sessions)
+            """)
+
+            session_columns = [
+                row[1]
+                for row in cursor.fetchall()
+            ]
+
+            if "user_id" not in session_columns:
+
+                cursor.execute("""
+                    ALTER TABLE user_sessions
+                    ADD COLUMN user_id INTEGER
+                """)
 
             # ----------------------------------------------------
             # ПОЛЬЗОВАТЕЛИ ДАШБОРДА
@@ -190,7 +215,10 @@ class DashboardLogger:
 
         except sqlite3.IntegrityError:
 
-            return False, "Пользователь с таким логином уже существует"
+            return False, (
+                "Пользователь с таким логином "
+                "уже существует"
+            )
 
         except Exception as e:
 
@@ -198,7 +226,9 @@ class DashboardLogger:
                 f"REGISTER USER ERROR: {e}"
             )
 
-            return False, "Ошибка регистрации пользователя"
+            return False, (
+                "Ошибка регистрации пользователя"
+            )
 
         finally:
 
@@ -209,9 +239,9 @@ class DashboardLogger:
                 except Exception:
                     pass
 
-    # ------------------------------------------------------------
+    # ============================================================
     # АКТИВНЫЕ ПОЛЬЗОВАТЕЛИ
-    # ------------------------------------------------------------
+    # ============================================================
 
     def get_active_users(self):
         """
@@ -262,9 +292,9 @@ class DashboardLogger:
                 except Exception:
                     pass
 
-    # ------------------------------------------------------------
+    # ============================================================
     # ВСЕ ПОЛЬЗОВАТЕЛИ
-    # ------------------------------------------------------------
+    # ============================================================
 
     def get_all_users(self):
         """
@@ -317,9 +347,9 @@ class DashboardLogger:
                 except Exception:
                     pass
 
-    # ------------------------------------------------------------
+    # ============================================================
     # АКТИВНОСТЬ ПОЛЬЗОВАТЕЛЯ
-    # ------------------------------------------------------------
+    # ============================================================
 
     def set_user_active(self, user_id, is_active):
         """
@@ -370,15 +400,15 @@ class DashboardLogger:
                 except Exception:
                     pass
 
-    # ------------------------------------------------------------
+    # ============================================================
     # УДАЛЕНИЕ ПОЛЬЗОВАТЕЛЯ
-    # ------------------------------------------------------------
+    # ============================================================
 
     def delete_user(self, user_id):
         """
         Удаляет пользователя из таблицы users.
 
-        История действий и сессий пользователя
+        История действий пользователя
         при этом не удаляется.
         """
 
@@ -420,12 +450,12 @@ class DashboardLogger:
                 except Exception:
                     pass
 
-    # ------------------------------------------------------------
+    # ============================================================
     # ПОСЛЕДНИЙ ВХОД
-    # ------------------------------------------------------------
+    # ============================================================
 
     def update_last_login(self, user_id):
-        """Обновляет дату и время последнего входа"""
+        """Обновляет дату и время последнего входа."""
 
         conn = None
 
@@ -489,10 +519,6 @@ class DashboardLogger:
 
             from streamlit.runtime import get_instance
 
-            # ----------------------------------------------------
-            # Получаем текущий Streamlit context
-            # ----------------------------------------------------
-
             ctx = get_script_run_ctx()
 
             if ctx is None:
@@ -503,15 +529,7 @@ class DashboardLogger:
 
                 return "unknown"
 
-            # ----------------------------------------------------
-            # Получаем runtime
-            # ----------------------------------------------------
-
             runtime = get_instance()
-
-            # ----------------------------------------------------
-            # Получаем информацию о текущей сессии
-            # ----------------------------------------------------
 
             session_info = (
                 runtime._session_mgr.get_session_info(
@@ -527,10 +545,6 @@ class DashboardLogger:
 
                 return "unknown"
 
-            # ----------------------------------------------------
-            # Получаем клиента
-            # ----------------------------------------------------
-
             client = session_info.client
 
             if client is None:
@@ -540,10 +554,6 @@ class DashboardLogger:
                 )
 
                 return "unknown"
-
-            # ----------------------------------------------------
-            # Получаем WebSocket
-            # ----------------------------------------------------
 
             websocket = getattr(
                 client,
@@ -558,10 +568,6 @@ class DashboardLogger:
                 )
 
                 return "unknown"
-
-            # ----------------------------------------------------
-            # Получаем адрес клиента
-            # ----------------------------------------------------
 
             remote_client = websocket.client
 
@@ -599,14 +605,14 @@ class DashboardLogger:
         report_name=None,
         params=None
     ):
-        """Логирует действие пользователя"""
+        """Логирует действие пользователя."""
 
         conn = None
 
         try:
 
             # ----------------------------------------------------
-            # Подключение к БД
+            # ПОДКЛЮЧЕНИЕ
             # ----------------------------------------------------
 
             conn = sqlite3.connect(
@@ -616,13 +622,13 @@ class DashboardLogger:
             cursor = conn.cursor()
 
             # ----------------------------------------------------
-            # IP пользователя
+            # IP
             # ----------------------------------------------------
 
             ip_address = self._get_client_ip()
 
             # ----------------------------------------------------
-            # User-Agent
+            # USER-AGENT
             # ----------------------------------------------------
 
             try:
@@ -637,7 +643,7 @@ class DashboardLogger:
                 user_agent = "unknown"
 
             # ----------------------------------------------------
-            # Session ID
+            # SESSION ID
             # ----------------------------------------------------
 
             session_id = st.session_state.get(
@@ -654,7 +660,7 @@ class DashboardLogger:
             )
 
             # ----------------------------------------------------
-            # Время
+            # ВРЕМЯ
             # ----------------------------------------------------
 
             timestamp = datetime.now().strftime(
@@ -662,7 +668,7 @@ class DashboardLogger:
             )
 
             # ----------------------------------------------------
-            # Параметры
+            # ПАРАМЕТРЫ
             # ----------------------------------------------------
 
             params_json = (
@@ -675,7 +681,7 @@ class DashboardLogger:
             )
 
             # ----------------------------------------------------
-            # Запись действия
+            # ЗАПИСЬ ДЕЙСТВИЯ
             # ----------------------------------------------------
 
             cursor.execute("""
@@ -702,10 +708,6 @@ class DashboardLogger:
                 user_id
             ))
 
-            # ----------------------------------------------------
-            # Проверяем, что INSERT действительно выполнен
-            # ----------------------------------------------------
-
             inserted_id = cursor.lastrowid
 
             print(
@@ -718,7 +720,7 @@ class DashboardLogger:
             )
 
             # ----------------------------------------------------
-            # Обновляем информацию о сессии
+            # ОБНОВЛЯЕМ СЕССИЮ
             # ----------------------------------------------------
 
             if session_id != "unknown":
@@ -728,27 +730,32 @@ class DashboardLogger:
                     (
                         session_id,
                         ip_address,
+                        user_id,
                         first_visit,
                         last_visit,
                         visit_count
                     )
-                    VALUES (?, ?, ?, ?, 1)
+                    VALUES (?, ?, ?, ?, ?, 1)
 
                     ON CONFLICT(session_id)
                     DO UPDATE SET
                         last_visit = ?,
-                        ip_address = ?
+                        ip_address = ?,
+                        user_id = ?,
+                        visit_count = visit_count + 1
                 """, (
                     session_id,
                     ip_address,
+                    user_id,
                     timestamp,
                     timestamp,
                     timestamp,
-                    ip_address
+                    ip_address,
+                    user_id
                 ))
 
             # ----------------------------------------------------
-            # Фиксируем транзакцию
+            # COMMIT
             # ----------------------------------------------------
 
             conn.commit()
@@ -787,7 +794,6 @@ class DashboardLogger:
 
                 try:
                     conn.close()
-
                 except Exception:
                     pass
 
@@ -800,9 +806,13 @@ class DashboardLogger:
         Получает пользователей, которые были активны
         за последние N минут.
 
+        ВАЖНО:
+        Пользователь определяется по user_id,
+        а НЕ по IP.
+
         Возвращает:
         [
-            (ip_address, last_visit),
+            (user_id, login, ip_address, last_visit),
             ...
         ]
         """
@@ -817,42 +827,62 @@ class DashboardLogger:
 
             cursor = conn.cursor()
 
-            # ----------------------------------------------------
-            # Время, после которого пользователь считается
-            # неактивным
-            # ----------------------------------------------------
-
             cutoff = (
                 datetime.now()
                 - timedelta(minutes=minutes)
-            ).strftime("%Y-%m-%d %H:%M:%S")
+            ).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
 
             # ----------------------------------------------------
-            # Получаем последнюю активность по каждому IP
+            # Получаем все активные сессии пользователей
             # ----------------------------------------------------
 
             cursor.execute("""
                 SELECT
-                    ip_address,
-                    MAX(last_visit) AS last_visit
+                    us.user_id,
+                    u.login,
+                    us.ip_address,
+                    us.last_visit
 
-                FROM user_sessions
+                FROM user_sessions AS us
 
-                WHERE last_visit >= ?
-                AND ip_address IS NOT NULL
-                AND ip_address NOT IN (
-                    '127.0.0.1',
-                    'unknown'
-                )
+                INNER JOIN users AS u
+                    ON us.user_id = u.user_id
 
-                GROUP BY ip_address
+                WHERE
+                    us.last_visit >= ?
+                    AND us.user_id IS NOT NULL
 
-                ORDER BY last_visit DESC
+                ORDER BY
+                    us.last_visit DESC
             """, (
                 cutoff,
             ))
 
-            online_users = cursor.fetchall()
+            rows = cursor.fetchall()
+
+            # ----------------------------------------------------
+            # Оставляем только одну строку на пользователя.
+            #
+            # Если один пользователь имеет несколько сессий,
+            # он всё равно считается одним пользователем.
+            # ----------------------------------------------------
+
+            online_users = []
+
+            seen_users = set()
+
+            for row in rows:
+
+                user_id = row[0]
+
+                if user_id in seen_users:
+                    continue
+
+                seen_users.add(user_id)
+
+                online_users.append(row)
 
             return online_users
 
@@ -866,7 +896,7 @@ class DashboardLogger:
 
         finally:
 
-            if conn:
+            if conn is not None:
 
                 conn.close()
 
@@ -875,7 +905,7 @@ class DashboardLogger:
     # ============================================================
 
     def get_statistics(self):
-        """Получает статистику из логов"""
+        """Получает статистику из логов."""
 
         conn = None
 
@@ -888,7 +918,7 @@ class DashboardLogger:
             cursor = conn.cursor()
 
             # ----------------------------------------------------
-            # Всего действий
+            # ВСЕГО ДЕЙСТВИЙ
             # ----------------------------------------------------
 
             cursor.execute(
@@ -898,23 +928,22 @@ class DashboardLogger:
             total_actions = cursor.fetchone()[0]
 
             # ----------------------------------------------------
-            # Уникальные посетители
+            # УНИКАЛЬНЫЕ ПОСЕТИТЕЛИ
+            #
+            # Считаем по USER_ID,
+            # а не по IP.
             # ----------------------------------------------------
 
             cursor.execute("""
-                SELECT COUNT(DISTINCT ip_address)
+                SELECT COUNT(DISTINCT user_id)
                 FROM user_actions
-                WHERE ip_address IS NOT NULL
-                AND ip_address NOT IN (
-                    'unknown',
-                    '127.0.0.1'
-                )
+                WHERE user_id IS NOT NULL
             """)
 
             unique_visitors = cursor.fetchone()[0]
 
             # ----------------------------------------------------
-            # Уникальные сессии
+            # УНИКАЛЬНЫЕ СЕССИИ
             # ----------------------------------------------------
 
             cursor.execute("""
@@ -927,7 +956,7 @@ class DashboardLogger:
             unique_sessions = cursor.fetchone()[0]
 
             # ----------------------------------------------------
-            # Действия сегодня
+            # ДЕЙСТВИЯ СЕГОДНЯ
             # ----------------------------------------------------
 
             today = datetime.now().strftime(
@@ -945,18 +974,16 @@ class DashboardLogger:
             today_actions = cursor.fetchone()[0]
 
             # ----------------------------------------------------
-            # Посетители сегодня
+            # ПОСЕТИТЕЛИ СЕГОДНЯ
+            #
+            # Считаем уникальные USER_ID.
             # ----------------------------------------------------
 
             cursor.execute("""
-                SELECT COUNT(DISTINCT ip_address)
+                SELECT COUNT(DISTINCT user_id)
                 FROM user_actions
                 WHERE timestamp LIKE ?
-                AND ip_address IS NOT NULL
-                AND ip_address NOT IN (
-                    'unknown',
-                    '127.0.0.1'
-                )
+                AND user_id IS NOT NULL
             """, (
                 today + "%",
             ))
@@ -964,7 +991,7 @@ class DashboardLogger:
             today_visitors = cursor.fetchone()[0]
 
             # ----------------------------------------------------
-            # Популярные отчеты
+            # ПОПУЛЯРНЫЕ ОТЧЕТЫ
             # ----------------------------------------------------
 
             cursor.execute("""
@@ -985,7 +1012,7 @@ class DashboardLogger:
             popular_reports = cursor.fetchall()
 
             # ----------------------------------------------------
-            # Активность по дням
+            # АКТИВНОСТЬ ПО ДНЯМ
             # ----------------------------------------------------
 
             cursor.execute("""
@@ -1005,7 +1032,7 @@ class DashboardLogger:
             daily_activity = cursor.fetchall()
 
             # ----------------------------------------------------
-            # Последние действия
+            # ПОСЛЕДНИЕ ДЕЙСТВИЯ
             # ----------------------------------------------------
 
             cursor.execute("""
@@ -1015,11 +1042,12 @@ class DashboardLogger:
                     ua.action,
                     ua.report_name,
                     u.login
-                FROM user_actions ua
-                LEFT JOIN users u
+                FROM user_actions AS ua
+
+                LEFT JOIN users AS u
                     ON ua.user_id = u.user_id
 
-                ORDER BY timestamp DESC
+                ORDER BY ua.timestamp DESC
 
                 LIMIT 50
             """)
@@ -1027,7 +1055,7 @@ class DashboardLogger:
             recent_actions = cursor.fetchall()
 
             # ----------------------------------------------------
-            # Возвращаем статистику
+            # ВОЗВРАТ
             # ----------------------------------------------------
 
             return {

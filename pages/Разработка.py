@@ -3,6 +3,7 @@ import html
 import streamlit as st
 
 from styles import load_css
+from logger import logger
 
 from suggestions import (
     add_suggestion,
@@ -26,6 +27,24 @@ st.set_page_config(
 load_css()
 
 
+def get_current_user_login():
+    """Получает логин текущего авторизованного пользователя."""
+
+    user_id = st.session_state.get("user_id")
+
+    if not user_id:
+        return ""
+
+    users = logger.get_all_users()
+
+    for user in users:
+
+        if user[0] == user_id:
+            return user[1]
+
+    return ""
+
+
 # ============================================================
 # ДИАЛОГ ДОБАВЛЕНИЯ
 # ============================================================
@@ -43,9 +62,12 @@ def add_suggestion_dialog():
         placeholder="Например: Добавить отчет по заявкам"
     )
 
+    current_login = get_current_user_login()
+
     author = st.text_input(
         "Ваше имя",
-        placeholder="Введите имя..."
+        value=current_login,
+        disabled=True
     )
 
     suggestion = st.text_area(
