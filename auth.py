@@ -2,6 +2,11 @@ import re
 import streamlit as st
 
 from logger import logger
+from cookie_bridge import (
+    COOKIE_NAME,
+    set_auth_cookie,
+    delete_auth_cookie,
+)
 
 
 # ============================================================
@@ -24,8 +29,11 @@ def validate_login(login):
     if not login:
         return False, "Введите логин"
 
-    # Фамилия + И. + О.
-    pattern = r"^[А-ЯЁа-яёA-Za-z-]+ [А-ЯЁа-яёA-Za-z]\. [А-ЯЁа-яёA-Za-z]\.$"
+    pattern = (
+        r"^[А-ЯЁа-яёA-Za-z-]+ "
+        r"[А-ЯЁа-яёA-Za-z]\. "
+        r"[А-ЯЁа-яёA-Za-z]\.$"
+    )
 
     if not re.fullmatch(pattern, login):
         return False, "Используйте формат: Фамилия И. О."
@@ -74,22 +82,105 @@ def get_current_user():
 
 
 # ============================================================
+# ПОИСК ПОЛЬЗОВАТЕЛЯ ПО ID
+# ============================================================
+
+def get_user_by_id(user_id):
+
+    try:
+        user_id = int(user_id)
+
+    except (TypeError, ValueError):
+        return None
+
+    users = logger.get_active_users()
+
+    for current_user_id, login in users:
+
+        if current_user_id == user_id:
+            return current_user_id, login
+
+    return None
+
+
+# ============================================================
+# ВОССТАНОВЛЕНИЕ АВТОРИЗАЦИИ ИЗ COOKIE
+# ============================================================
+
+def restore_auth_from_cookie():
+    """
+    Восстанавливает авторизацию из обычной browser cookie.
+    """
+
+    if is_authenticated():
+        return True
+
+    try:
+
+        saved_user_id = st.context.cookies.get(
+            COOKIE_NAME
+        )
+
+    except Exception:
+        return False
+
+    if not saved_user_id:
+        return False
+
+    user = get_user_by_id(
+        saved_user_id
+    )
+
+    if not user:
+
+        return False
+
+    user_id, login = user
+
+    st.session_state["authenticated"] = True
+    st.session_state["user_id"] = user_id
+    st.session_state["username"] = login
+
+    return True
+
+
+# ============================================================
 # ВХОД ПОЛЬЗОВАТЕЛЯ
 # ============================================================
 
 def login_user(user_id, login):
     """Авторизует пользователя."""
 
+    # --------------------------------------------------------
+    # Сохраняем авторизацию в session_state
+    # --------------------------------------------------------
+
     st.session_state["authenticated"] = True
     st.session_state["user_id"] = user_id
     st.session_state["username"] = login
 
+    # --------------------------------------------------------
     # Обновляем время последнего входа
-    logger.update_last_login(user_id)
+    # --------------------------------------------------------
 
+    logger.update_last_login(
+        user_id
+    )
+
+    # --------------------------------------------------------
     # Логируем вход
+    # --------------------------------------------------------
+
     logger.log_action(
         "login"
+    )
+
+    # --------------------------------------------------------
+    # Устанавливаем обычную browser cookie
+    # --------------------------------------------------------
+
+    set_auth_cookie(
+        user_id
     )
 
 
@@ -100,20 +191,37 @@ def login_user(user_id, login):
 def logout_user():
     """Выход пользователя из системы."""
 
+    # --------------------------------------------------------
     # Логируем выход до очистки session_state
+    # --------------------------------------------------------
+
     if is_authenticated():
 
         logger.log_action(
             "logout"
         )
 
-    # Удаляем данные авторизации
-    st.session_state["authenticated"] = False
-    st.session_state.pop("user_id", None)
-    st.session_state.pop("username", None)
+    # --------------------------------------------------------
+    # Очищаем session_state
+    # --------------------------------------------------------
 
-    # Чтобы после выхода снова показать окно авторизации
-    st.rerun()
+    st.session_state["authenticated"] = False
+
+    st.session_state.pop(
+        "user_id",
+        None
+    )
+
+    st.session_state.pop(
+        "username",
+        None
+    )
+
+    # --------------------------------------------------------
+    # Удаляем cookie через браузер
+    # --------------------------------------------------------
+
+    delete_auth_cookie()
 
 
 # ============================================================
@@ -123,16 +231,18 @@ def logout_user():
 def registration_form():
     """Форма регистрации нового пользователя."""
 
-    st.subheader("📝 Регистрация",
-            help=(
-                "Регистрация нужна для будущих персональных "
-                "возможностей дашборда: избранные отчеты, "
-                "сохраненные настройки, история выбранных "
-                "отчетов и другие индивидуальные функции."
-            ))
+    st.subheader(
+        "📝 Регистрация",
+        help=(
+            "Регистрация нужна для будущих персональных "
+            "возможностей дашборда: избранные отчеты, "
+            "сохраненные настройки, история выбранных "
+            "отчетов и другие индивидуальные функции."
+        )
+    )
 
     # --------------------------------------------------------
-    # Поле и кнопка регистрации
+    # Поле регистрации
     # --------------------------------------------------------
 
     login = st.text_input(
@@ -140,6 +250,10 @@ def registration_form():
         placeholder="Введите здесь",
         key="registration_login"
     )
+
+    # --------------------------------------------------------
+    # Кнопка регистрации
+    # --------------------------------------------------------
 
     if st.button(
         "Зарегистрироваться",
@@ -153,7 +267,9 @@ def registration_form():
 
         if not is_valid:
 
-            st.error(result)
+            st.error(
+                result
+            )
 
             return
 
@@ -168,7 +284,6 @@ def registration_form():
                 "Теперь можно войти."
             )
 
-            # Очищаем поле регистрации
             st.session_state.pop(
                 "registration_login",
                 None
@@ -190,7 +305,9 @@ def registration_form():
 def login_form():
     """Отображает окно авторизации."""
 
-    st.title("🔐 Авторизация")
+    st.title(
+        "🔐 Авторизация"
+    )
 
     # --------------------------------------------------------
     # Два блока рядом
@@ -206,7 +323,9 @@ def login_form():
 
     with col_login:
 
-        st.subheader("👤 Вход")
+        st.subheader(
+            "👤 Вход"
+        )
 
         # ----------------------------------------------------
         # Получаем только активных пользователей
@@ -221,13 +340,11 @@ def login_form():
                 for user_id, login in users
             }
 
-            # ------------------------------------------------
-            # Пустое значение при загрузке
-            # ------------------------------------------------
-
             login_options = [
                 "— Выберите пользователя —"
-            ] + list(user_options.keys())
+            ] + list(
+                user_options.keys()
+            )
 
             selected_login = st.selectbox(
                 "Пользователь",
@@ -262,7 +379,14 @@ def login_form():
                         selected_login
                     )
 
-                    st.rerun()
+                    # ------------------------------------------------
+                    # НЕ вызываем st.rerun()
+                    #
+                    # cookie_bridge сам перезагрузит страницу
+                    # после того, как браузер установит cookie.
+                    # ------------------------------------------------
+
+                    st.stop()
 
         else:
 
@@ -287,17 +411,32 @@ def require_auth():
     """
     Проверяет авторизацию пользователя.
 
-    Если пользователь авторизован:
-        возвращает True
+    Порядок:
 
-    Если нет:
-        показывает окно авторизации
-        возвращает False
+    1. Проверяем session_state.
+    2. Проверяем обычную browser cookie.
+    3. Если cookie нет — показываем авторизацию.
     """
+
+    # --------------------------------------------------------
+    # Уже авторизован
+    # --------------------------------------------------------
 
     if is_authenticated():
 
         return True
+
+    # --------------------------------------------------------
+    # Восстанавливаем из cookie
+    # --------------------------------------------------------
+
+    if restore_auth_from_cookie():
+
+        return True
+
+    # --------------------------------------------------------
+    # Cookie нет
+    # --------------------------------------------------------
 
     login_form()
 
@@ -312,6 +451,7 @@ def logout_button():
     """Показывает кнопку выхода в боковой панели."""
 
     if not is_authenticated():
+
         return
 
     st.sidebar.write(
@@ -322,4 +462,7 @@ def logout_button():
         "Выйти",
         use_container_width=True
     ):
+
         logout_user()
+
+        st.stop()
