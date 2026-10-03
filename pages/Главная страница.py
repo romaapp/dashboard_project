@@ -983,14 +983,6 @@ if not selected_reports:
             ":material/interests: Избранные отчеты"
         )
 
-        favorite_icons = [
-            ":material/star:",
-            ":material/star_border:",
-            ":material/bookmark:",
-            ":material/grade:",
-            ":material/favorite:"
-        ]
-
         # ----------------------------------------------------
         # По 5 карточек в каждой строке
         # ----------------------------------------------------
@@ -1013,10 +1005,6 @@ if not selected_reports:
 
                 favorite_card_options.append(
                     {
-                        "icon": favorite_icons[
-                            (row_start + i)
-                            % len(favorite_icons)
-                        ],
                         "title": report_name
                     }
                 )
