@@ -366,6 +366,43 @@ and d.deliverydate::date BETWEEN (%s)::DATE AND %s::DATE
 order by m.nameen
     """,
 
+	    'Смена вида запаса': """
+with l as (select 
+	s.barcode,
+	mw.storageobject_id,
+	mw.recorddate::date as dta,
+	mw.recorddate as dtb,
+	to_char(mw.recorddate, 'HH24:MI DD.MM.YYYY') as dt,
+	mw.stocktype_id,
+	st.nameru,
+	u.login,
+	lag(mw.stocktype_id) over (
+	partition by mw.storageobject_id
+	order by mw.recorddate, mw.tid) as stlag,
+	lag(st.nameru) over (
+	partition by mw.storageobject_id
+	order by mw.recorddate, mw.tid) as slag
+from movements_warehousesummary as mw
+	join storageobjects as s on
+	mw.storageobject_id = s.tid
+	join stocktypes as st on
+	mw.stocktype_id = st.tid
+	left join users as u on
+	mw.user_id = u.tid
+)
+select
+	l.barcode as "Номер ОС",
+	l.dt as "Дата изменения",
+	l.slag as "Предыдущий вид запаса",
+	l.nameru as "Текущий вид запаса",
+	l.login as "Пользователь"
+from l
+where l.stocktype_id <> l.stlag
+and l.storageobject_id <> 0
+and l.dta BETWEEN (%s)::DATE AND %s::DATE
+order by l.dtb desc
+    """,
+
 	    'Производительность комплектации': """
 WITH operations AS (
     SELECT
