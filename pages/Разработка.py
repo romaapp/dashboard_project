@@ -49,7 +49,7 @@ def get_current_user_login():
 # ДИАЛОГ ДОБАВЛЕНИЯ
 # ============================================================
 
-@st.dialog("💡 Новое предложение")
+@st.dialog(":material/cognition_2: Новое предложение")
 def add_suggestion_dialog():
 
     st.write(
@@ -80,7 +80,7 @@ def add_suggestion_dialog():
     )
 
     uploaded_files = st.file_uploader(
-        "📎 Прикрепить файлы",
+        ":material/upload_file: Прикрепить файлы",
         type=[
             "png",
             "jpg",
@@ -101,7 +101,7 @@ def add_suggestion_dialog():
     if uploaded_files:
 
         st.caption(
-            f"📎 Прикреплено файлов: {len(uploaded_files)}"
+            f":material/upload_file: Прикреплено файлов: {len(uploaded_files)}"
         )
 
         for file in uploaded_files:
@@ -126,7 +126,7 @@ def add_suggestion_dialog():
     with col2:
 
         if st.button(
-            "➕ Добавить предложение",
+            ":material/prompt_suggestion: Добавить предложение",
             type="primary",
             use_container_width=True
         ):
@@ -165,7 +165,7 @@ def add_suggestion_dialog():
                 )
 
                 st.success(
-                    "✅ Предложение добавлено!"
+                    ":material/add_task: Предложение добавлено!"
                 )
 
                 st.rerun()
@@ -204,7 +204,7 @@ col_button, col_total, col_active, col_completed = st.columns(
 with col_button:
 
     if st.button(
-        "➕ Предложить изменение",
+        ":material/add_circle: Предложить изменение",
         type="primary",
         use_container_width=True
     ):
@@ -215,7 +215,7 @@ with col_button:
 with col_total:
 
     st.metric(
-        "💡 Всего предложений",
+        ":material/prompt_suggestion: Всего предложений",
         stats["total"]
     )
 
@@ -223,7 +223,7 @@ with col_total:
 with col_active:
 
     st.metric(
-        "⌛ В работе",
+        ":material/hourglass_bottom: В работе",
         stats["active"]
     )
 
@@ -231,7 +231,7 @@ with col_active:
 with col_completed:
 
     st.metric(
-        "✅ Выполнено",
+        ":material/task_alt: Выполнено",
         stats["completed"]
     )
 
@@ -305,9 +305,9 @@ else:
         # ----------------------------------------------------
 
         status_text = (
-            "✅ Выполнено"
+            ":material/task_alt: Выполнено"
             if completed
-            else "⌛ В работе"
+            else ":material/hourglass_bottom: В работе"
         )
 
 
@@ -322,7 +322,7 @@ else:
         # ----------------------------------------------------
 
         with st.expander(
-            f"💡 {title}  •  👤 {author}  •  {status_text}",
+            f":material/prompt_suggestion: {title}  •  :material/account_circle: {author}  •  {status_text}",
             expanded=False
         ):
 
@@ -448,7 +448,7 @@ else:
             if completed:
 
                 text = (
-                    f"✅ Выполнено "
+                    f":material/task_alt: Выполнено "
                     f"{completed_at or ''}"
                 )
 

@@ -143,6 +143,20 @@ class DashboardLogger:
                 )
             """)
 
+            # ----------------------------------------------------
+            # ИЗБРАННЫЕ ОТЧЕТЫ ПОЛЬЗОВАТЕЛЕЙ
+            # ----------------------------------------------------
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_favorites (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    report_name TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(user_id, report_name)
+                )
+            """)
+
             conn.commit()
             conn.close()
 
@@ -410,6 +424,9 @@ class DashboardLogger:
 
         История действий пользователя
         при этом не удаляется.
+
+        Избранные отчеты пользователя
+        также удаляются.
         """
 
         conn = None
@@ -421,6 +438,21 @@ class DashboardLogger:
             )
 
             cursor = conn.cursor()
+
+            # ----------------------------------------------------
+            # Удаляем избранное пользователя
+            # ----------------------------------------------------
+
+            cursor.execute("""
+                DELETE FROM user_favorites
+                WHERE user_id = ?
+            """, (
+                user_id,
+            ))
+
+            # ----------------------------------------------------
+            # Удаляем пользователя
+            # ----------------------------------------------------
 
             cursor.execute("""
                 DELETE FROM users
@@ -500,6 +532,283 @@ class DashboardLogger:
                     conn.close()
                 except Exception:
                     pass
+
+    # ============================================================
+    # ИЗБРАННЫЕ ОТЧЕТЫ
+    # ============================================================
+
+    def get_user_favorites(self, user_id):
+        """
+        Возвращает избранные отчеты пользователя.
+
+        Формат:
+        [
+            report_name,
+            ...
+        ]
+        """
+
+        conn = None
+
+        try:
+
+            if not user_id:
+                return []
+
+            conn = sqlite3.connect(
+                self.db_path
+            )
+
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT
+                    report_name
+                FROM user_favorites
+                WHERE user_id = ?
+                ORDER BY id
+            """, (
+                user_id,
+            ))
+
+            rows = cursor.fetchall()
+
+            return [
+                row[0]
+                for row in rows
+            ]
+
+        except Exception as e:
+
+            print(
+                f"GET USER FAVORITES ERROR: {e}"
+            )
+
+            return []
+
+        finally:
+
+            if conn is not None:
+
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    # ============================================================
+    # ПРОВЕРКА ИЗБРАННОГО
+    # ============================================================
+
+    def is_favorite(self, user_id, report_name):
+        """
+        Проверяет, находится ли отчет
+        в избранном пользователя.
+
+        Возвращает:
+        True / False
+        """
+
+        conn = None
+
+        try:
+
+            if not user_id or not report_name:
+                return False
+
+            conn = sqlite3.connect(
+                self.db_path
+            )
+
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT 1
+                FROM user_favorites
+                WHERE user_id = ?
+                AND report_name = ?
+                LIMIT 1
+            """, (
+                user_id,
+                report_name
+            ))
+
+            return cursor.fetchone() is not None
+
+        except Exception as e:
+
+            print(
+                f"IS FAVORITE ERROR: {e}"
+            )
+
+            return False
+
+        finally:
+
+            if conn is not None:
+
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    # ============================================================
+    # ДОБАВЛЕНИЕ В ИЗБРАННОЕ
+    # ============================================================
+
+    def add_favorite(self, user_id, report_name):
+        """
+        Добавляет отчет в избранное пользователя.
+
+        Если отчет уже существует,
+        повторно он не добавляется.
+
+        Возвращает:
+        True / False
+        """
+
+        conn = None
+
+        try:
+
+            if not user_id or not report_name:
+                return False
+
+            conn = sqlite3.connect(
+                self.db_path
+            )
+
+            cursor = conn.cursor()
+
+            created_at = datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+
+            cursor.execute("""
+                INSERT OR IGNORE INTO user_favorites (
+                    user_id,
+                    report_name,
+                    created_at
+                )
+                VALUES (?, ?, ?)
+            """, (
+                user_id,
+                report_name,
+                created_at
+            ))
+
+            conn.commit()
+
+            return True
+
+        except Exception as e:
+
+            print(
+                f"ADD FAVORITE ERROR: {e}"
+            )
+
+            return False
+
+        finally:
+
+            if conn is not None:
+
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    # ============================================================
+    # УДАЛЕНИЕ ИЗ ИЗБРАННОГО
+    # ============================================================
+
+    def remove_favorite(self, user_id, report_name):
+        """
+        Удаляет отчет из избранного пользователя.
+
+        Возвращает:
+        True / False
+        """
+
+        conn = None
+
+        try:
+
+            if not user_id or not report_name:
+                return False
+
+            conn = sqlite3.connect(
+                self.db_path
+            )
+
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                DELETE FROM user_favorites
+                WHERE user_id = ?
+                AND report_name = ?
+            """, (
+                user_id,
+                report_name
+            ))
+
+            conn.commit()
+
+            return True
+
+        except Exception as e:
+
+            print(
+                f"REMOVE FAVORITE ERROR: {e}"
+            )
+
+            return False
+
+        finally:
+
+            if conn is not None:
+
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    # ============================================================
+    # ПЕРЕКЛЮЧЕНИЕ ИЗБРАННОГО
+    # ============================================================
+
+    def toggle_favorite(self, user_id, report_name):
+        """
+        Добавляет отчет в избранное,
+        если его там нет.
+
+        Если отчет уже есть —
+        удаляет его.
+
+        Возвращает:
+        True  - отчет теперь в избранном
+        False - отчет теперь НЕ в избранном
+        """
+
+        if self.is_favorite(
+            user_id,
+            report_name
+        ):
+
+            self.remove_favorite(
+                user_id,
+                report_name
+            )
+
+            return False
+
+        else:
+
+            self.add_favorite(
+                user_id,
+                report_name
+            )
+
+            return True
 
     # ============================================================
     # ПОЛУЧЕНИЕ IP-АДРЕСА

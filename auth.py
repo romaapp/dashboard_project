@@ -459,7 +459,7 @@ def logout_button():
     )
 
     if st.sidebar.button(
-        "Выйти",
+        ":material/logout: Выйти",
         use_container_width=True
     ):
 

@@ -597,7 +597,7 @@ def filter_dataframe(
         )
 
         st.button(
-            "🔎 Найти",
+            ":material/search: Найти",
             key=f"{key}_search",
             use_container_width=True,
             on_click=apply_search
@@ -617,7 +617,7 @@ def filter_dataframe(
         )
 
         st.button(
-            "✖ Очистить",
+            ":material/cancel: Очистить",
             key=f"{key}_clear",
             use_container_width=True,
             on_click=clear_search
@@ -671,7 +671,7 @@ def filter_dataframe(
         )
 
         st.download_button(
-            "⇩ Скачать",
+            ":material/download: Скачать",
             data=excel_data,
             file_name="chestny_znak_all_os.xlsx",
             mime=(
@@ -768,11 +768,11 @@ if "chz_all_os_chz_data_loaded" not in st.session_state:
 
 tab_accepted, tab_search_os, tab_all_os, tab_all_os_chz, tab_problems = st.tabs(
     [
-        "🏷️ Принятые марки",
-        "🔎 Подробная информация по ОС",
-        "📦 Все ОС с марками",
-        "📦 Все ОС с маркировкой",
-        "⚠️ Проблемы"
+        ":material/bookmark_stacks: Принятые марки",
+        ":material/pageview: Подробная информация по ОС",
+        ":material/package_2: Все ОС с марками",
+        ":material/package_2: Все ОС с маркировкой",
+        ":material/warning: Проблемы"
     ]
 )
 
@@ -826,7 +826,7 @@ with tab_accepted:
         )
 
         search_accepted_clicked = st.button(
-            "🔎 Найти",
+            ":material/search: Найти",
             key="chz_accepted_search",
             type="primary",
             use_container_width=True
@@ -892,7 +892,7 @@ with tab_accepted:
             with count_col1:
 
                 st.metric(
-                    "📦 Всего ОС",
+                    ":material/package_2: Всего ОС",
                     f"{df['Номер ОС'].nunique():,}".replace(
                         ",",
                         " "
@@ -902,7 +902,7 @@ with tab_accepted:
             with count_col2:
 
                 st.metric(
-                    "🏷️ Уникальных КИ",
+                    ":material/bookmark_stacks: Уникальных КИ",
                     f"{df['КИ'].nunique():,}".replace(
                         ",",
                         " "
@@ -912,7 +912,7 @@ with tab_accepted:
             with count_col3:
 
                 st.metric(
-                    "🏷️ Уникальных КИТУ",
+                    ":material/bookmark_stacks: Уникальных КИТУ",
                     f"{df['КИТУ'].nunique():,}".replace(
                         ",",
                         " "
@@ -969,7 +969,7 @@ with tab_accepted:
                 )
 
                 st.download_button(
-                    "⇩ Скачать",
+                    ":material/download: Скачать",
                     data=excel_data,
                     file_name=(
                         "chestny_znak_"
@@ -1026,7 +1026,7 @@ with tab_search_os:
         )
 
         search_os_clicked = st.button(
-            "🔎 Найти",
+            ":material/search: Найти",
             key="chz_os_search",
             type="primary",
             use_container_width=True
@@ -1190,14 +1190,14 @@ with tab_search_os:
             with info_col1:
 
                 st.metric(
-                    "📦 Номер ОС",
+                    ":material/package_2: Номер ОС",
                     current_os
                 )
 
             with info_col2:
 
                 st.metric(
-                    "🏷️ Количество КИ",
+                    ":material/bookmark_stacks: Количество КИ",
                     f"{len(df_os):,}".replace(
                         ",",
                         " "
@@ -1207,7 +1207,7 @@ with tab_search_os:
             with info_col3:
 
                 st.metric(
-                    "🏷️ Уникальных КИТУ",
+                    ":material/bookmark_stacks: Уникальных КИТУ",
                     f"{df_os['КИТУ'].nunique():,}".replace(
                         ",",
                         " "
@@ -1285,7 +1285,7 @@ with tab_search_os:
                 )
 
                 st.download_button(
-                    "⇩ Скачать",
+                    ":material/download: Скачать",
                     data=excel_data,
                     file_name=(
                         f"marks_{current_os}.xlsx"
@@ -1320,7 +1320,7 @@ with tab_all_os:
     with col_load_all:
 
         load_all_os_clicked = st.button(
-            "🔎 Загрузить данные",
+            ":material/search: Загрузить данные",
             key="chz_all_os_search",
             type="primary",
             use_container_width=True
@@ -1384,7 +1384,7 @@ with tab_all_os:
             with count_all_col1:
 
                 st.metric(
-                    "📦 Всего ОС",
+                    ":material/package_2: Всего ОС",
                     f"{df_all_os['Номер ОС'].nunique():,}".replace(
                         ",",
                         " "
@@ -1394,7 +1394,7 @@ with tab_all_os:
             with count_all_col2:
 
                 st.metric(
-                    "🏷️ Всего КМ",
+                    ":material/bookmark_stacks: Всего КМ",
                     f"{df_all_os['Количество КМ'].sum():,}".replace(
                         ",",
                         " "
@@ -1404,7 +1404,7 @@ with tab_all_os:
             with count_all_col3:
 
                 st.metric(
-                    "🏷️ Всего КИТУ",
+                    ":material/bookmark_stacks: Всего КИТУ",
                     f"{df_all_os['Количество КИТУ'].sum():,}".replace(
                         ",",
                         " "
@@ -1505,7 +1505,7 @@ with tab_all_os_chz:
     with col_load_all_chz:
 
         load_all_os_chz_clicked = st.button(
-            "🔎 Загрузить данные",
+            ":material/search: Загрузить данные",
             key="chz_all_os_chz_search",
             type="primary",
             use_container_width=True
@@ -1622,25 +1622,25 @@ with tab_all_os_chz:
 
             with count_chz_col1:
                 st.metric(
-                    "📦 Всего ОС",
+                    ":material/package_2: Всего ОС",
                     f"{total_os:,}".replace(",", " ")
                 )
 
             with count_chz_col2:
                 st.metric(
-                    "🏷️ Маркированных ОС",
+                    ":material/bookmark_stacks: Маркированных ОС",
                     f"{marked_os:,}".replace(",", " ")
                 )
 
             with count_chz_col3:
                 st.metric(
-                    "📦 Немаркированных ОС",
+                    ":material/package_2: Немаркированных ОС",
                     f"{unmarked_os:,}".replace(",", " ")
                 )
 
             with count_chz_col4:
                 st.metric(
-                    "🔖 Осталось промаркировать штук",
+                    ":material/inventory_2: Осталось промаркировать штук",
                     f"{remaining_to_mark:,}".replace(",", " ")
                 )
 

@@ -7,6 +7,7 @@ from config import Config
 from queries import SQL_QUERIES
 from logger import logger
 from styles import load_css
+from streamlit_extras.card_selector import card_selector
 import os
 import sqlite3
 
@@ -112,6 +113,49 @@ def get_top_reports(limit=5):
         )
 
         return []
+
+
+# ============================================================
+# ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ ИЗБРАННЫХ ОТЧЕТОВ
+# ============================================================
+
+def get_current_user_favorites():
+    """Получает избранные отчеты текущего пользователя."""
+
+    user_id = st.session_state.get("user_id")
+
+    if not user_id:
+        return []
+
+    try:
+
+        return logger.get_user_favorites(user_id)
+
+    except Exception as e:
+
+        print(
+            f"Ошибка получения избранных отчетов: {e}"
+        )
+
+        return []
+
+
+# ============================================================
+# ФУНКЦИЯ ДЛЯ ПЕРЕКЛЮЧЕНИЯ ИЗБРАННОГО
+# ============================================================
+
+def toggle_report_favorite(report_name):
+    """Добавляет или удаляет отчет из избранного."""
+
+    user_id = st.session_state.get("user_id")
+
+    if not user_id:
+        return
+
+    logger.toggle_favorite(
+        user_id,
+        report_name
+    )
 
 
 # ============================================================
@@ -283,6 +327,82 @@ def filter_dataframe(df, key):
 
 
 # ============================================================
+# ФУНКЦИЯ ДЛЯ ОТОБРАЖЕНИЯ НАЗВАНИЯ ИЗБРАННОГО ОТЧЕТА
+# ============================================================
+
+def display_report_header(report_name):
+    """
+    Отображает название отчета и кнопку
+    добавления/удаления из избранного.
+    """
+
+    user_id = st.session_state.get("user_id")
+
+    if not user_id:
+        st.subheader(
+            report_name.replace('_', ' ').title()
+        )
+        return
+
+    is_favorite = logger.is_favorite(
+        user_id,
+        report_name
+    )
+
+    # --------------------------------------------------------
+    # Название + кнопка избранного
+    # --------------------------------------------------------
+
+    col_title, col_favorite = st.columns(
+        [7, 3]
+    )
+
+    with col_title:
+
+        st.subheader(
+            report_name.replace('_', ' ').title()
+        )
+
+    with col_favorite:
+
+        # Немного выравниваем кнопку относительно заголовка
+        st.markdown(
+            """
+            <div style="height: 8px;"></div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        if is_favorite:
+
+            if st.button(
+                ":material/star_half: Удалить из избранного",
+                key=f"favorite_remove_{report_name}",
+                use_container_width=True
+            ):
+
+                toggle_report_favorite(
+                    report_name
+                )
+
+                st.rerun()
+
+        else:
+
+            if st.button(
+                ":material/star: Добавить в избранное",
+                key=f"favorite_add_{report_name}",
+                use_container_width=True
+            ):
+
+                toggle_report_favorite(
+                    report_name
+                )
+
+                st.rerun()
+
+
+# ============================================================
 # ФУНКЦИЯ ДЛЯ ОТОБРАЖЕНИЯ ОТЧЕТА С ПАРАМЕТРАМИ
 # ============================================================
 
@@ -295,35 +415,54 @@ def display_parameterized_report(
     params=None,
     filter_value=None
 ):
-    """Отображает отчет с параметрами и фильтром"""
+    """Отображает отчет с параметрами и фильтром."""
 
-    st.subheader(
-        report_name.replace('_', ' ').title()
+    # --------------------------------------------------------
+    # ЗАГОЛОВОК + ИЗБРАННОЕ
+    # --------------------------------------------------------
+
+    display_report_header(
+        report_name
     )
+
+    # --------------------------------------------------------
+    # ПАРАМЕТРЫ
+    # --------------------------------------------------------
 
     if params:
 
         if isinstance(params, tuple) and len(params) == 2:
+
             st.caption(
                 f"📅 Параметры запроса: "
                 f"{params[0]} - {params[1]}"
             )
 
         elif isinstance(params, tuple) and len(params) == 1:
+
             st.caption(
                 f"📅 Параметры запроса: {params[0]}"
             )
 
         else:
+
             st.caption(
                 f"📅 Параметры запроса: {params}"
             )
+
+    # --------------------------------------------------------
+    # ФИЛЬТР
+    # --------------------------------------------------------
 
     if filter_value:
 
         st.caption(
             f"🎯 Фильтр: {filter_value}"
         )
+
+    # --------------------------------------------------------
+    # ПРОВЕРКА ДАННЫХ
+    # --------------------------------------------------------
 
     if df.empty:
 
@@ -333,9 +472,17 @@ def display_parameterized_report(
 
         return
 
+    # ========================================================
+    # ТАБЛИЦА ИЗ ДВУХ КОЛОНОК
+    # ========================================================
+
     if len(df.columns) == 2:
 
         col1, col2 = df.columns[:2]
+
+        # ----------------------------------------------------
+        # ГРАФИК
+        # ----------------------------------------------------
 
         if show_charts:
 
@@ -374,6 +521,10 @@ def display_parameterized_report(
                     f"Не удалось построить график: {str(e)}"
                 )
 
+        # ----------------------------------------------------
+        # ТАБЛИЦА
+        # ----------------------------------------------------
+
         if show_data:
 
             df_filtered = filter_dataframe(
@@ -382,12 +533,20 @@ def display_parameterized_report(
             )
 
             df_filtered = df_filtered.copy()
-            df_filtered.index = range(1, len(df_filtered) + 1)
+
+            df_filtered.index = range(
+                1,
+                len(df_filtered) + 1
+            )
 
             st.dataframe(
                 df_filtered,
                 use_container_width=True
             )
+
+        # ----------------------------------------------------
+        # СТАТИСТИКА
+        # ----------------------------------------------------
 
         if show_stats and len(df) > 0:
 
@@ -420,11 +579,19 @@ def display_parameterized_report(
                         "Нет данных для статистики"
                     )
 
+    # ========================================================
+    # ОТЧЕТ С БОЛЬШИМ КОЛИЧЕСТВОМ КОЛОНОК
+    # ========================================================
+
     else:
 
         numeric_cols = df.select_dtypes(
             include="number"
         ).columns
+
+        # ----------------------------------------------------
+        # ГРАФИК
+        # ----------------------------------------------------
 
         if show_charts and len(numeric_cols) > 0:
 
@@ -452,6 +619,10 @@ def display_parameterized_report(
                     f"Не удалось построить график: {str(e)}"
                 )
 
+        # ----------------------------------------------------
+        # ТАБЛИЦА
+        # ----------------------------------------------------
+
         if show_data:
 
             df_filtered = filter_dataframe(
@@ -460,12 +631,20 @@ def display_parameterized_report(
             )
 
             df_filtered = df_filtered.copy()
-            df_filtered.index = range(1, len(df_filtered) + 1)
+
+            df_filtered.index = range(
+                1,
+                len(df_filtered) + 1
+            )
 
             st.dataframe(
                 df_filtered,
                 use_container_width=True
             )
+
+        # ----------------------------------------------------
+        # СТАТИСТИКА
+        # ----------------------------------------------------
 
         if (
             show_stats
@@ -497,6 +676,7 @@ def display_parameterized_report(
 
 @st.cache_resource
 def get_db_engine():
+
     return Config.get_engine()
 
 
@@ -521,7 +701,9 @@ def load_data(query_name, params=None):
 
     try:
 
-        query = SQL_QUERIES.get(query_name)
+        query = SQL_QUERIES.get(
+            query_name
+        )
 
         if query is None:
 
@@ -570,7 +752,7 @@ with st.sidebar:
     # ========================================================
 
     if st.button(
-        "🔄 Обновить данные",
+        ":material/refresh: Обновить данные",
         use_container_width=True
     ):
 
@@ -587,7 +769,7 @@ with st.sidebar:
     # ========================================================
 
     st.subheader(
-        "📋 Выбор отчетов"
+        ":material/add_chart: Выбор отчетов"
     )
 
     service_queries = []
@@ -619,11 +801,18 @@ with st.sidebar:
             )
 
             if report not in current_reports:
-                current_reports.append(report)
 
-            st.session_state.selected_reports = current_reports
+                current_reports.append(
+                    report
+                )
 
-            st.session_state.reports_selector = current_reports
+            st.session_state.selected_reports = (
+                current_reports
+            )
+
+            st.session_state.reports_selector = (
+                current_reports
+            )
 
         st.session_state.tile_report = None
 
@@ -695,12 +884,14 @@ with st.sidebar:
     # ДИАПАЗОН ДАТЫ ДЛЯ ОТЧЕТОВ
     # ========================================================
 
-    date_reports = ['Выданные клиентам заказы',
-    'Объём-расчёт количества мест',
-    'Расчёт количества мест с ВГХ',
-    'Артикулы, отбирающиеся упаковками',
-    'Производительность комплектации',
-    'Смена вида запаса']
+    date_reports = [
+        'Выданные клиентам заказы',
+        'Объём-расчёт количества мест',
+        'Расчёт количества мест с ВГХ',
+        'Артикулы, отбирающиеся упаковками',
+        'Производительность комплектации',
+        'Смена вида запаса'
+    ]
 
     date_from = None
     date_to = None
@@ -710,7 +901,9 @@ with st.sidebar:
         for report in selected_reports
     ):
 
-        st.subheader("📅 Период дат")
+        st.subheader(
+            ":material/calendar_clock: Период дат"
+        )
 
         date_from = st.date_input(
             "Дата от:",
@@ -733,7 +926,7 @@ with st.sidebar:
     # ========================================================
 
     st.subheader(
-        "⚙️ Настройки"
+        ":material/settings: Настройки"
     )
 
     col_layout = st.radio(
@@ -768,54 +961,136 @@ with st.sidebar:
 if not selected_reports:
 
     st.warning(
-        "⚠️ Выберите хотя бы один отчет "
-        "в боковой панели"
+        ":material/feedback: Выберите хотя бы один отчет"
     )
 
+    # ========================================================
+    # ИЗБРАННЫЕ ОТЧЕТЫ
+    # ========================================================
+
+    favorite_reports = get_current_user_favorites()
+
+    # Оставляем только существующие отчеты
+    favorite_reports = [
+        report
+        for report in favorite_reports
+        if report in all_reports
+    ]
+
+    if favorite_reports:
+
+        st.subheader(
+            ":material/interests: Избранные отчеты"
+        )
+
+        favorite_icons = [
+            ":material/star:",
+            ":material/star_border:",
+            ":material/bookmark:",
+            ":material/grade:",
+            ":material/favorite:"
+        ]
+
+        # ----------------------------------------------------
+        # По 5 карточек в каждой строке
+        # ----------------------------------------------------
+
+        for row_start in range(
+            0,
+            len(favorite_reports),
+            5
+        ):
+
+            row_reports = favorite_reports[
+                row_start:row_start + 5
+            ]
+
+            favorite_card_options = []
+
+            for i, report_name in enumerate(
+                row_reports
+            ):
+
+                favorite_card_options.append(
+                    {
+                        "icon": favorite_icons[
+                            (row_start + i)
+                            % len(favorite_icons)
+                        ],
+                        "title": report_name
+                    }
+                )
+
+            selected_favorite = card_selector(
+                favorite_card_options,
+                key=f"favorite_reports_card_selector_{row_start}"
+            )
+
+            if selected_favorite is not None:
+
+                selected_report = row_reports[
+                    selected_favorite
+                ]
+
+                st.session_state.tile_report = (
+                    selected_report
+                )
+
+                st.rerun()
+
+
+    # ========================================================
+    # ЧАСТО ИСПОЛЬЗУЕМЫЕ ОТЧЕТЫ
+    # ========================================================
+
     st.subheader(
-        "🔥 Часто используемые отчеты"
+        ":material/local_fire_department: Часто используемые отчеты"
     )
 
     top_reports = get_top_reports(5)
 
     if top_reports:
 
-        cols = st.columns(5)
-
-        icons = [
-            "📊",
-            "📈",
-            "📋",
-            "📉",
-            "📦"
+        card_icons = [
+            ":material/analytics:",
+            ":material/query_stats:",
+            ":material/assignment:",
+            ":material/bar_chart:",
+            ":material/inventory_2:"
         ]
+
+        card_options = []
 
         for i, (report_name, count) in enumerate(
             top_reports
         ):
 
-            col_idx = i % 5
+            card_options.append(
+                {
+                    "icon": card_icons[
+                        i % len(card_icons)
+                    ],
+                    "title": report_name,
+                    "description": f"{count} запусков"
+                }
+            )
 
-            with cols[col_idx]:
+        selected_card = card_selector(
+            card_options,
+            key="top_reports_card_selector"
+        )
 
-                with st.container(key=f"tile_{i}"):
+        if selected_card is not None:
 
-                    button_text = (
-                        f"{icons[i % len(icons)]}\n\n"
-                        f"{report_name}\n\n"
-                        f"🔄 {count} запусков\n\n"
-                        f"▶ Нажмите для запуска"
-                    )
+            selected_report = top_reports[
+                selected_card
+            ][0]
 
-                    if st.button(
-                        button_text,
-                        key=f"tile_btn_{i}",
-                        use_container_width=True
-                    ):
+            st.session_state.tile_report = (
+                selected_report
+            )
 
-                        st.session_state.tile_report = report_name
-
-                        st.rerun()
+            st.rerun()
 
     else:
 
@@ -865,6 +1140,10 @@ else:
 
                     with cols[idx % 2]:
 
+                        display_report_header(
+                            report_name
+                        )
+
                         st.warning(
                             f"⚠️ Для отчета "
                             f"'{report_name}' "
@@ -873,6 +1152,10 @@ else:
                         )
 
                 else:
+
+                    display_report_header(
+                        report_name
+                    )
 
                     st.warning(
                         f"⚠️ Для отчета "
@@ -904,31 +1187,41 @@ else:
 
                     with cols[idx % 2]:
 
+                        display_report_header(
+                            report_name
+                        )
+
                         st.warning(
-                            f"⚠️ Для отчета '{report_name}' "
+                            f"⚠️ Для отчета "
+                            f"'{report_name}' "
                             "укажите период дат "
                             "в боковой панели"
                         )
 
                 else:
 
+                    display_report_header(
+                        report_name
+                    )
+
                     st.warning(
-                        f"⚠️ Для отчета '{report_name}' "
+                        f"⚠️ Для отчета "
+                        f"'{report_name}' "
                         "укажите период дат "
                         "в боковой панели"
                     )
 
                 continue
 
-            # ------------------------------------------------
-            # Проверяем правильность периода
-            # ------------------------------------------------
-
             if date_from > date_to:
 
                 if use_columns:
 
                     with cols[idx % 2]:
+
+                        display_report_header(
+                            report_name
+                        )
 
                         st.error(
                             "❌ Дата начала периода "
@@ -937,16 +1230,16 @@ else:
 
                 else:
 
+                    display_report_header(
+                        report_name
+                    )
+
                     st.error(
                         "❌ Дата начала периода "
                         "не может быть позже даты окончания"
                     )
 
                 continue
-
-            # ------------------------------------------------
-            # Передаем две даты в SQL
-            # ------------------------------------------------
 
             params = (
                 date_from.strftime('%Y-%m-%d'),
@@ -979,12 +1272,20 @@ else:
 
                 with cols[idx % 2]:
 
+                    display_report_header(
+                        report_name
+                    )
+
                     st.error(
                         f"Нет данных для "
                         f"'{report_name}'"
                     )
 
             else:
+
+                display_report_header(
+                    report_name
+                )
 
                 st.error(
                     f"Нет данных для "
@@ -1002,7 +1303,9 @@ else:
             tuple(params) if params else None
         )
 
-        if report_key not in st.session_state.logged_reports:
+        if report_key not in (
+            st.session_state.logged_reports
+        ):
 
             logger.log_action(
                 'view_report',
