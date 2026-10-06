@@ -198,7 +198,7 @@ with st.sidebar:
     # ========================================================
 
     if st.button(
-        "🔄 Обновить данные",
+        ":material/refresh: Обновить данные",
         use_container_width=True
     ):
 
@@ -225,14 +225,14 @@ with st.sidebar:
         st.rerun()
 
 
-    st.header("⚙️ Настройки")
+    st.header(":material/settings: Настройки")
 
 
     # ========================================================
     # АВТООБНОВЛЕНИЕ
     # ========================================================
 
-    st.subheader("🔄 Обновление данных")
+    st.subheader(":material/autorenew: Обновление данных")
 
 
     auto_refresh = st.checkbox(
@@ -285,7 +285,7 @@ with st.sidebar:
     # КАРУСЕЛЬ
     # ========================================================
 
-    st.subheader("🎞️ Карусель отчетов")
+    st.subheader(":material/view_carousel: Карусель отчетов")
 
 
     carousel_enabled = st.checkbox(
@@ -479,7 +479,7 @@ def reports_page():
             st.markdown(
                 f"""
 <div class="refresh-timer">
-    🔄 Следующее обновление через:
+    Следующее обновление через:
     <span class="refresh-countdown">
         {seconds_left_refresh} сек.
     </span>
@@ -491,7 +491,7 @@ def reports_page():
     else:
 
         st.info(
-            "⏸️ Автообновление выключено"
+            ":material/pause_circle: Автообновление выключено"
         )
 
 

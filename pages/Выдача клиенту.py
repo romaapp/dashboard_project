@@ -176,7 +176,7 @@ with st.sidebar:
     # --------------------------------------------------------
 
     if st.button(
-        "🔄 Обновить данные",
+        ":material/refresh: Обновить данные",
         use_container_width=True
     ):
 
@@ -205,14 +205,14 @@ with st.sidebar:
         st.rerun()
 
 
-    st.header("⚙️ Настройки")
+    st.header(":material/settings: Настройки")
 
 
     # --------------------------------------------------------
     # АВТООБНОВЛЕНИЕ
     # --------------------------------------------------------
 
-    st.subheader("🔄 Автообновление")
+    st.subheader(":material/autorenew: Обновление данных")
 
     auto_refresh = st.checkbox(
         "Включить автообновление (20 сек.)",
@@ -349,7 +349,7 @@ if st.session_state.auto_refresh_enabled:
             st.markdown(
                 f"""
                 <div class="refresh-timer">
-                    🔄 Следующее обновление через:
+                    Следующее обновление через:
                     <span class="refresh-countdown">
                         {seconds_left} сек.
                     </span>
@@ -379,7 +379,7 @@ if st.session_state.auto_refresh_enabled:
 else:
 
     st.info(
-        "⏸️ Автообновление выключено"
+        ":material/pause_circle: Автообновление выключено"
     )
 
     show_reports()
