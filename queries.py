@@ -403,6 +403,44 @@ and l.dta BETWEEN (%s)::DATE AND %s::DATE
 order by l.dtb desc
     """,
 
+	    'Дефициты заявок отгрузки': """
+select 
+	d.deliverynumber as "Номер заявки",
+	td.materialname as "Артикул",
+	td.quantity as "К-во в заявке",
+	so.barcode as "ОС",
+	w.basequantity as "К-во на ОС",
+	l.locationname as "Место",
+	case when l.isblockoutput = '1'
+	then 'Да' 
+	else '' 
+	end as "Заблокировано?",
+	so.stocktypename as "Вид запаса",
+	ds.shortname as "Владелец запаса"
+from
+	hdr_deliveryrequest d
+join tbl_deliveryrequestmaterials as td on
+	td.transaction_id = d.transaction_id
+	and td.shortagereason_id is null
+join materialdeficitepositions as md on
+	d.transaction_id = md.transaction_id
+	and td.material_id = md.material_id
+join warehousesummary as w on
+	td.material_id = w.material_id
+	and w.basequantity > 0
+join storageobjects as so on	
+	w.storageobject_id = so.tid
+join locations as l on
+	so.location_id = l.tid
+join barcodeobjects as b on
+	w.barcodeobject_id = b.tid
+join debtors as ds on
+	b.ownerdebtor_id = ds.tid
+where  
+ d.deliverytype_id = 7
+	and d.deliverydate::date BETWEEN (%s)::DATE AND %s::DATE
+    """,
+
 	    'Производительность комплектации': """
 WITH operations AS (
     SELECT
@@ -575,6 +613,7 @@ where  td.shortagereason_id is null
 and d.deliverytype_id = 7
 and d.deliverysubtype_id = '109'
 and hd.taskpriority = '5000'
+and d.isfinished is null
 and d.transportnumber is null
 and d.deliverydate::date >= CURRENT_DATE-10
 group by 	
