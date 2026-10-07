@@ -404,7 +404,7 @@ order by l.dtb desc
     """,
 
 	    'Дефициты заявок отгрузки': """
-select 
+select distinct
 	d.deliverynumber as "Номер заявки",
 	td.materialname as "Артикул",
 	td.quantity as "К-во в заявке",
@@ -413,10 +413,17 @@ select
 	l.locationname as "Место",
 	case when l.isblockoutput = '1'
 	then 'Да' 
-	else '' 
-	end as "Заблокировано?",
+	end as "Блок",
 	so.stocktypename as "Вид запаса",
-	ds.shortname as "Владелец запаса"
+	ds.shortname as "Владелец запаса",
+	hw.documentnumber as "Входящая поставка",
+	case when hw.incomestatus = 'STARTED' then 'В работе'
+	when hw.incomestatus = 'ACCEPTED' then 'Создана' 
+	when hw.incomestatus = 'CONFIRMED' then 'Закрыта' 
+	end as "Статус поставки",
+	case when wr.tid is not null then 'В резерве' 
+	when d2.deliverynumber is not null then d2.deliverynumber
+	end as "В заявке"
 from
 	hdr_deliveryrequest d
 join tbl_deliveryrequestmaterials as td on
@@ -436,6 +443,16 @@ join barcodeobjects as b on
 	w.barcodeobject_id = b.tid
 join debtors as ds on
 	b.ownerdebtor_id = ds.tid
+left join tbl_warehouseincomeobjects as tw on
+	so.tid = tw.storageobject_id
+left join hdr_warehouseincome as hw on
+	tw.transaction_id = hw.transaction_id
+left join warehousereserve as wr on
+	so.tid = wr.storageobject_id
+left join transactions as t on
+	so.deliverytransaction_id = t.tid 
+left join hdr_deliveryrequest as d2 on
+	t.parenttransaction_id = d2.transaction_id
 where  
  d.deliverytype_id = 7
 	and d.deliverydate::date BETWEEN (%s)::DATE AND %s::DATE
