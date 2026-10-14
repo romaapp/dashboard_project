@@ -243,7 +243,7 @@ def get_marks_by_os(os_number):
     JOIN storageobjects AS so
         ON s.storageobject_id = so.tid
 
-    JOIN cis.stock AS pc
+    LEFT JOIN cis.stock AS pc
         ON s.parentcis_id::text = pc.cis_id::text
 
     JOIN warehousesummary AS w
@@ -266,6 +266,7 @@ def get_marks_by_os(os_number):
 
     WHERE
         m.isam = '1'
+        AND s.cis_level = '0'
         AND s.barcodeobject_id = w.barcodeobject_id
         AND so.barcode = %s
 
@@ -309,66 +310,62 @@ def get_marks_by_os(os_number):
 def get_all_os():
 
     query = """
+WITH stock_agg AS (
     SELECT
-        l.locationname AS "Место",
-        so.barcode AS "Номер ОС",
-        m.nameen AS "Артикул",
-        m.nameru AS "Наименование",
-        st.nameru AS "Вид запаса",
-        COALESCE(s.cnt_km, 0) AS "Количество КМ",
-        COALESCE(s.cnt_kitu, 0) AS "Количество КИТУ",
-        SUM(w.basequantity) AS "Количество штук",
-        hw.documentnumber AS "Входящая поставка"
-
-    FROM storageobjects AS so
-
-    JOIN warehousesummary AS w
-        ON so.tid = w.storageobject_id
-        AND w.basequantity > 0
-
-    JOIN materials AS m
-        ON w.material_id = m.tid
-        AND m.isam = '1'
-
-    JOIN stocktypes AS st
-        ON w.stocktype_id = st.tid
-
-    JOIN locations AS l
-        ON so.location_id = l.tid
-
-    JOIN (
-        SELECT
-            storageobject_id,
-            barcodeobject_id,
-            COUNT(DISTINCT cis_code) AS cnt_km,
-            COUNT(DISTINCT parentcis_id) AS cnt_kitu
-        FROM cis.stock
-        WHERE parentcis_id IS NOT NULL
-        GROUP BY
-            storageobject_id,
-            barcodeobject_id
-    ) AS s
-        ON s.storageobject_id = so.tid
-        AND s.barcodeobject_id = w.barcodeobject_id
-
-    LEFT JOIN tbl_warehouseincomeobjects AS tw
-        ON so.tid = tw.storageobject_id
-
-    LEFT JOIN hdr_warehouseincome AS hw
-        ON tw.transaction_id = hw.transaction_id
-
+        s.storageobject_id,
+        s.barcodeobject_id,
+        COUNT(DISTINCT s.cis_code)
+            FILTER (WHERE s.cis_level = '0') AS count_km,
+        COUNT(DISTINCT s.parentcis_id) AS count_kitu
+    FROM cis.stock AS s
     GROUP BY
-        l.locationname,
-        so.barcode,
-        m.nameen,
-        m.nameru,
-        st.nameru,
-        s.cnt_km,
-        s.cnt_kitu,
+        s.storageobject_id,
+        s.barcodeobject_id
+),
+income_docs AS (
+    SELECT DISTINCT
+        tw.storageobject_id,
         hw.documentnumber
-
-    ORDER BY
-        so.barcode;
+    FROM tbl_warehouseincomeobjects AS tw
+    JOIN hdr_warehouseincome AS hw
+        ON tw.transaction_id = hw.transaction_id
+)
+SELECT
+    l.locationname AS "Место",
+    so.barcode AS "Номер ОС",
+    m.nameen AS "Артикул",
+    m.nameru AS "Наименование",
+    st.nameru AS "Вид запаса",
+    sa.count_km AS "Количество КМ",
+    sa.count_kitu AS "Количество КИТУ",
+    SUM(w.basequantity) AS "Количество штук",
+    id.documentnumber AS "Входящая поставка"
+FROM storageobjects AS so
+JOIN warehousesummary AS w
+    ON so.tid = w.storageobject_id
+JOIN materials AS m
+    ON w.material_id = m.tid
+JOIN stocktypes AS st
+    ON w.stocktype_id = st.tid
+JOIN locations AS l
+    ON so.location_id = l.tid
+JOIN stock_agg AS sa
+    ON sa.storageobject_id = so.tid
+    AND sa.barcodeobject_id = w.barcodeobject_id
+LEFT JOIN income_docs AS id
+    ON id.storageobject_id = so.tid
+WHERE m.isam = '1'
+    AND sa.count_km > 0
+GROUP BY
+    l.locationname,
+    so.barcode,
+    m.nameen,
+    m.nameru,
+    st.nameru,
+    sa.count_km,
+    sa.count_kitu,
+    id.documentnumber
+ORDER BY so.barcode;
     """
 
     try:
@@ -402,7 +399,7 @@ def get_all_os():
 def get_all_os_with_chz():
 
     query = """
-    SELECT
+     SELECT
         l.locationname AS "Место",
         so.barcode AS "Номер ОС",
         m.nameen AS "Артикул",
@@ -436,10 +433,9 @@ def get_all_os_with_chz():
         SELECT
             storageobject_id,
             barcodeobject_id,
-            COUNT(DISTINCT cis_code) AS cnt_km,
+            COUNT(DISTINCT cis_code) FILTER (WHERE cis_level = '0') AS cnt_km,
             COUNT(DISTINCT parentcis_id) AS cnt_kitu
         FROM cis.stock
-        WHERE parentcis_id IS NOT NULL
         GROUP BY
             storageobject_id,
             barcodeobject_id
