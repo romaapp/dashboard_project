@@ -481,6 +481,82 @@ def get_all_os_with_chz():
 
 
 # ============================================================
+# КЛЮЧЕВЫЕ ПОКАЗАТЕЛИ ЧЕСТНОГО ЗНАКА
+# ============================================================
+
+@st.cache_data(ttl=60)
+def get_chz_kpi():
+
+    query = """
+    WITH base AS (
+    SELECT
+        so.tid AS storageobject_id,
+        so.barcode AS barcode,
+        COALESCE(s.cnt_km, 0) AS cnt_km,
+	    m.nameen,
+	    SUM(w.basequantity) AS basequantity
+    FROM storageobjects AS so
+    JOIN warehousesummary AS w
+        ON so.tid = w.storageobject_id
+        AND w.basequantity > 0
+    JOIN materials AS m
+        ON w.material_id = m.tid
+        AND m.isam = '1'
+    JOIN stocktypes AS st
+        ON w.stocktype_id = st.tid
+    JOIN locations AS l
+        ON so.location_id = l.tid
+    LEFT JOIN (
+        SELECT
+            storageobject_id,
+            barcodeobject_id,
+            COUNT(DISTINCT cis_code) FILTER (WHERE cis_level = '0') AS cnt_km,
+            COUNT(DISTINCT parentcis_id) AS cnt_kitu
+        FROM cis.stock
+        GROUP BY
+            storageobject_id,
+            barcodeobject_id
+    ) AS s
+        ON s.barcodeobject_id = w.barcodeobject_id
+        OR s.storageobject_id = so.tid
+    GROUP BY
+        so.tid,
+        so.barcode,
+        s.cnt_km,
+	    m.nameen
+)
+SELECT
+    COUNT(DISTINCT barcode) AS total_os,
+    COUNT(DISTINCT barcode) FILTER (WHERE cnt_km > 0) AS marked_os,
+    COUNT(DISTINCT barcode)
+        - COUNT(DISTINCT barcode) FILTER (WHERE cnt_km > 0) AS unmarked_os,
+	COUNT(DISTINCT nameen) AS total_articles,
+    COUNT(DISTINCT nameen) FILTER (WHERE cnt_km > 0) AS marked_articles,
+    COUNT(DISTINCT nameen) FILTER (WHERE cnt_km = 0) AS unmarked_articles,
+	SUM(basequantity) AS total_pieces,
+	SUM(cnt_km) AS marked_pieces,
+	SUM(basequantity)-SUM(cnt_km) AS unmarked_pieces
+FROM base;
+    """
+
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor(
+                cursor_factory=RealDictCursor
+            ) as cur:
+                cur.execute(query)
+                result = cur.fetchone()
+
+                return dict(result) if result else {}
+
+    except Exception as e:
+        st.error(
+            f"Ошибка получения ключевых показателей: {e}"
+        )
+        return {}
+
+
+# ============================================================
 # EXCEL
 # ============================================================
 
@@ -756,13 +832,13 @@ if "chz_all_os_chz_data_loaded" not in st.session_state:
 # ВКЛАДКИ
 # ============================================================
 
-tab_accepted, tab_search_os, tab_all_os, tab_all_os_chz, tab_problems = st.tabs(
+tab_accepted, tab_search_os, tab_all_os, tab_all_os_chz, tab_kpi = st.tabs(
     [
         ":material/bookmark_stacks: Принятые марки",
         ":material/pageview: Подробная информация по ОС",
         ":material/package_2: Все ОС с марками",
         ":material/package_2: Все ОС с маркировкой",
-        ":material/warning: Проблемы"
+        ":material/monitoring: Ключевые показатели"
     ]
 )
 
@@ -1310,7 +1386,7 @@ with tab_all_os:
     with col_load_all:
 
         load_all_os_clicked = st.button(
-            ":material/search: Загрузить данные",
+            ":material/refresh: Загрузить данные",
             key="chz_all_os_search",
             type="primary",
             use_container_width=True
@@ -1495,7 +1571,7 @@ with tab_all_os_chz:
     with col_load_all_chz:
 
         load_all_os_chz_clicked = st.button(
-            ":material/search: Загрузить данные",
+            ":material/refresh: Загрузить данные",
             key="chz_all_os_chz_search",
             type="primary",
             use_container_width=True
@@ -1580,35 +1656,10 @@ with tab_all_os_chz:
 
 
             # =================================================
-            # ОСТАЛОСЬ ПРОМАРКИРОВАТЬ ШТУК
-            # =================================================
-
-            total_pieces = (
-                pd.to_numeric(
-                    df_all_os_chz["Количество штук"],
-                    errors="coerce"
-                )
-                .fillna(0)
-                .sum()
-            )
-
-            total_km = (
-                pd.to_numeric(
-                    df_all_os_chz["Количество КМ"],
-                    errors="coerce"
-                )
-                .fillna(0)
-                .sum()
-            )
-
-            remaining_to_mark = round(total_pieces - total_km)
-
-
-            # =================================================
             # ОТОБРАЖЕНИЕ СЧЁТЧИКОВ
             # =================================================
 
-            count_chz_col1, count_chz_col2, count_chz_col3, count_chz_col4 = st.columns(4)
+            count_chz_col1, count_chz_col2, count_chz_col3 = st.columns(3)
 
             with count_chz_col1:
                 st.metric(
@@ -1628,11 +1679,6 @@ with tab_all_os_chz:
                     f"{unmarked_os:,}".replace(",", " ")
                 )
 
-            with count_chz_col4:
-                st.metric(
-                    ":material/inventory_2: Осталось промаркировать штук",
-                    f"{remaining_to_mark:,}".replace(",", " ")
-                )
 
             # =================================================
             # РЕЗУЛЬТАТ ПОИСКА
@@ -1707,17 +1753,110 @@ with tab_all_os_chz:
 
 
 # ============================================================
-# ВКЛАДКА — ПРОБЛЕМЫ
+# ВКЛАДКА — КЛЮЧЕВЫЕ ПОКАЗАТЕЛИ
 # ============================================================
 
-with tab_problems:
+with tab_kpi:
 
     st.caption(
-        "Проблемы и ошибки, связанные с системой "
-        "«Честный знак»."
+        "Сводные показатели маркировки товаров "
+        "и остатков на складе."
     )
 
-    st.info(
-        "Раздел подготовлен для добавления "
-        "контроля проблем «Честного знака»."
-    )
+    if st.button(
+        ":material/refresh: Загрузить данные",
+        key="chz_kpi_refresh",
+        type="primary",
+        use_container_width=True
+    ):
+        get_chz_kpi.clear()
+
+    with st.spinner("Расчёт ключевых показателей..."):
+        kpi = get_chz_kpi()
+
+    if kpi:
+
+        def format_kpi(value):
+            return f"{int(value or 0):,}".replace(",", " ")
+
+
+        # ====================================================
+        # СТРОКА 1 
+        # ====================================================
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric(
+                ":material/deployed_code: Всего ОС",
+                format_kpi(kpi["total_os"])
+            )
+
+        with col2:
+            st.metric(
+                ":material/box: Всего артикулов",
+                format_kpi(kpi["total_articles"])
+            )
+
+        with col3:
+            st.metric(
+                ":material/bookmark_stacks: Всего штук",
+                format_kpi(kpi["total_pieces"])
+            )
+
+
+        # ====================================================
+        # СТРОКА 2 
+        # ====================================================
+
+        col4, col5, col6 = st.columns(3)
+
+        with col4:
+            st.metric(
+                ":material/deployed_code: Маркированных ОС",
+                format_kpi(kpi["marked_os"])
+            )
+
+        with col5:
+            st.metric(
+                ":material/box: Маркированных артикулов",
+                format_kpi(kpi["marked_articles"])
+            )
+
+        with col6:
+            st.metric(
+                ":material/bookmark_stacks: Маркированных штук",
+                format_kpi(kpi["marked_pieces"])
+            )
+
+
+        # ====================================================
+        # СТРОКА 3 
+        # ====================================================
+
+        col7, col8, col9 = st.columns(3)
+
+        with col7:
+            st.metric(
+                ":material/deployed_code: Немаркированных ОС",
+                format_kpi(kpi["unmarked_os"])
+            )
+
+        with col8:
+            st.metric(
+                ":material/box: Немаркированных артикулов",
+                format_kpi(kpi["unmarked_articles"])
+            )
+
+        with col9:
+            st.metric(
+                ":material/bookmark_stacks: Немаркированных штук",
+                format_kpi(kpi["unmarked_pieces"])
+            )
+
+
+    else:
+        st.warning(
+            "Не удалось получить ключевые показатели "
+            "или запрос не вернул данных."
+        )
