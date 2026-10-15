@@ -595,6 +595,54 @@ SELECT
 FROM operations_with_pause
 GROUP BY ФИО, Зона
 ORDER BY "К-во операций" desc
+    """,
+
+	    'Жесткая упаковка': """
+select
+	d.deliverydate::date as "Дата отгрузки",
+	COUNT(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
+	NOT IN ('125', '162', '163', '164', '165', '166')) as "Арт. отобрано",
+	COALESCE(SUM(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
+	NOT IN ('125', '162', '163', '164', '165', '166')), 0) as "Шт. отобрано",
+	COUNT(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
+	IN ('125', '162', '163', '164', '165', '166')) as "Арт. отобрано пог.",
+	COALESCE(SUM(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
+	IN ('125', '162', '163', '164', '165', '166')), 0) as "Шт. отобрано пог.",	
+	COUNT(td.quantity) FILTER (WHERE m.materialgroup_id 
+	NOT IN ('125', '162', '163', '164', '165', '166'))
+	-COUNT(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
+	NOT IN ('125', '162', '163', '164', '165', '166'))  as "Арт. осталось",
+	SUM(td.quantity) FILTER (WHERE m.materialgroup_id 
+	NOT IN ('125', '162', '163', '164', '165', '166'))
+	-COALESCE(SUM(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
+	NOT IN ('125', '162', '163', '164', '165', '166')), 0) as "Шт. осталось",
+	COUNT(td.quantity) FILTER (WHERE m.materialgroup_id 
+	IN ('125', '162', '163', '164', '165', '166'))
+	-COUNT(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
+	IN ('125', '162', '163', '164', '165', '166'))  as "Арт. осталось пог.",
+	SUM(td.quantity) FILTER (WHERE m.materialgroup_id 
+	IN ('125', '162', '163', '164', '165', '166'))
+	-COALESCE(SUM(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
+	IN ('125', '162', '163', '164', '165', '166')), 0) as "Шт. осталось пог.",		
+	ROUND(COALESCE(SUM(td.sys_pickedbasequantity), 0)*SUM(mu.nettoweight),2)  as "Вес отобрано",
+	ROUND(COALESCE(SUM(td.sys_pickedbasequantity), 0)*SUM(mu.unitvolume),2)  as "Объем отобрано",
+	ROUND((SUM(td.quantity)-COALESCE(SUM(td.sys_pickedbasequantity), 0))*SUM(mu.nettoweight),2)  as "Вес осталось",
+	ROUND((SUM(td.quantity)-COALESCE(SUM(td.sys_pickedbasequantity), 0))*SUM(mu.unitvolume),2)  as "Объем осталось"
+from
+	hdr_deliveryrequest d
+join tbl_deliveryrequestmaterials as td on
+	td.transaction_id = d.transaction_id
+left join materialunits as mu on
+	td.material_id = mu.tid
+join materials as m on
+	td.material_id = m.tid
+--Проверка на вычерки и тип поставки
+where  td.shortagereason_id is null
+	and td.extrafield2 is not null
+and d.deliverydate::date >= CURRENT_DATE
+and d.deliverytype_id = 7
+and d.deliverysubtype is not null
+group by d.deliverydate::date
     """
 
 }
