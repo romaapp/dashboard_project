@@ -242,12 +242,17 @@ JOIN storageobjects AS so
     ON s.storageobject_id = so.tid
 LEFT JOIN cis.stock AS pc
     ON s.parentcis_id = pc.cis_id
-LEFT JOIN warehousesummary AS w1
-    ON s.barcodeobject_id = w1.barcodeobject_id
-LEFT JOIN warehousesummary AS w2
-    ON s.storageobject_id = w2.storageobject_id
-JOIN warehousesummary AS w
-    ON w.tid = COALESCE(w1.tid, w2.tid)
+JOIN LATERAL (
+    SELECT w.*
+    FROM warehousesummary w
+    WHERE (w.barcodeobject_id = s.barcodeobject_id
+       AND w.storageobject_id = s.storageobject_id)
+	   OR w.storageobject_id = s.storageobject_id
+    ORDER BY
+        CASE WHEN w.barcodeobject_id = s.barcodeobject_id THEN 0 ELSE 1 END,
+        w.tid
+    LIMIT 1
+) w ON TRUE
 JOIN materials AS m
     ON w.material_id = m.tid
    AND m.isam = '1'
@@ -261,7 +266,7 @@ LEFT JOIN hdr_warehouseincome AS hw
     ON tw.transaction_id = hw.transaction_id
 WHERE
     s.cis_level = '0'
-    AND so.barcode = 'T0002798877'
+    AND so.barcode = %s
 ORDER BY m.nameen;
     """
 
@@ -301,65 +306,51 @@ ORDER BY m.nameen;
 def get_all_os():
 
     query = """
-WITH stock_agg AS (
-    SELECT
-        s.storageobject_id,
-        s.barcodeobject_id,
-        COUNT(DISTINCT s.cis_code)
-            FILTER (WHERE s.cis_level = '0') AS count_km,
-        COUNT(DISTINCT s.parentcis_id) AS count_kitu
-    FROM cis.stock AS s
-    GROUP BY
-        s.storageobject_id,
-        s.barcodeobject_id
-),
-income_docs AS (
-    SELECT DISTINCT
-        tw.storageobject_id,
-        hw.documentnumber
-    FROM tbl_warehouseincomeobjects AS tw
-    JOIN hdr_warehouseincome AS hw
-        ON tw.transaction_id = hw.transaction_id
-)
-SELECT
-    l.locationname AS "Место",
+SELECT DISTINCT
+	l.locationname AS "Место",
     so.barcode AS "Номер ОС",
     m.nameen AS "Артикул",
     m.nameru AS "Наименование",
     st.nameru AS "Вид запаса",
-    sa.count_km AS "Количество КМ",
-    sa.count_kitu AS "Количество КИТУ",
-    SUM(w.basequantity) AS "Количество штук",
-    id.documentnumber AS "Входящая поставка"
-FROM storageobjects AS so
-JOIN stock_agg AS sa
-    ON sa.storageobject_id = so.tid
-LEFT JOIN warehousesummary AS w1
-    ON sa.barcodeobject_id = w1.barcodeobject_id
-LEFT JOIN warehousesummary AS w2
-    ON sa.storageobject_id = w2.storageobject_id
-JOIN warehousesummary AS w
-    ON w.tid = COALESCE(w1.tid, w2.tid)
+    COUNT(s.cis_code) FILTER (WHERE s.cis_level = '0') AS "Количество КМ",
+    COUNT(s.cis_code) FILTER (WHERE s.cis_level = '2') AS "Количество КИТУ",
+    w.basequantity AS "Количество штук",
+    hw.documentnumber AS "Входящая поставка"
+FROM cis.stock AS s
+JOIN storageobjects AS so
+    ON s.storageobject_id = so.tid
+LEFT JOIN cis.stock AS pc
+    ON s.parentcis_id = pc.cis_id
+JOIN LATERAL (
+    SELECT w.*
+    FROM warehousesummary w
+    WHERE (w.barcodeobject_id = s.barcodeobject_id
+       AND w.storageobject_id = s.storageobject_id)
+	   OR w.storageobject_id = s.storageobject_id
+    ORDER BY
+        CASE WHEN w.barcodeobject_id = s.barcodeobject_id THEN 0 ELSE 1 END,
+        w.tid
+    LIMIT 1
+) w ON TRUE
 JOIN materials AS m
     ON w.material_id = m.tid
+   AND m.isam = '1'
 JOIN stocktypes AS st
     ON w.stocktype_id = st.tid
 JOIN locations AS l
     ON so.location_id = l.tid
-LEFT JOIN income_docs AS id
-    ON id.storageobject_id = so.tid
-WHERE m.isam = '1'
-    AND sa.count_km > 0
-GROUP BY
-    l.locationname,
+LEFT JOIN tbl_warehouseincomeobjects AS tw
+    ON so.tid = tw.storageobject_id
+LEFT JOIN hdr_warehouseincome AS hw
+    ON tw.transaction_id = hw.transaction_id
+GROUP BY l.locationname,
     so.barcode,
     m.nameen,
     m.nameru,
     st.nameru,
-    sa.count_km,
-    sa.count_kitu,
-    id.documentnumber
-ORDER BY so.barcode;
+    hw.documentnumber,
+	w.basequantity
+ORDER BY m.nameen;
     """
 
     try:
@@ -399,30 +390,21 @@ def get_all_os_with_chz():
         m.nameen AS "Артикул",
         m.nameru AS "Наименование",
         st.nameru AS "Вид запаса",
-
         COALESCE(s.cnt_km, 0) AS "Количество КМ",
         COALESCE(s.cnt_kitu, 0) AS "Количество КИТУ",
-
         SUM(w.basequantity) AS "Количество штук",
-
         hw.documentnumber AS "Входящая поставка"
-
     FROM storageobjects AS so
-
     JOIN warehousesummary AS w
         ON so.tid = w.storageobject_id
         AND w.basequantity > 0
-
     JOIN materials AS m
         ON w.material_id = m.tid
         AND m.isam = '1'
-
     JOIN stocktypes AS st
         ON w.stocktype_id = st.tid
-
     JOIN locations AS l
         ON so.location_id = l.tid
-
     LEFT JOIN (
         SELECT
             storageobject_id,
@@ -434,15 +416,13 @@ def get_all_os_with_chz():
             storageobject_id,
             barcodeobject_id
     ) AS s
-        ON s.barcodeobject_id = w.barcodeobject_id
-		OR s.storageobject_id = so.tid
-
+        ON (s.storageobject_id = so.tid
+		AND s.barcodeobject_id = w.barcodeobject_id)
+	    OR s.storageobject_id = so.tid
     LEFT JOIN tbl_warehouseincomeobjects AS tw
         ON so.tid = tw.storageobject_id
-
     LEFT JOIN hdr_warehouseincome AS hw
         ON tw.transaction_id = hw.transaction_id
-
     GROUP BY
         l.locationname,
         so.barcode,
@@ -452,7 +432,6 @@ def get_all_os_with_chz():
         s.cnt_km,
         s.cnt_kitu,
         hw.documentnumber
-
     ORDER BY
         so.barcode;
     """
@@ -517,8 +496,9 @@ def get_chz_kpi():
             storageobject_id,
             barcodeobject_id
     ) AS s
-        ON s.barcodeobject_id = w.barcodeobject_id
-        OR s.storageobject_id = so.tid
+        ON (s.storageobject_id = so.tid
+		AND s.barcodeobject_id = w.barcodeobject_id)
+	    OR s.storageobject_id = so.tid
     GROUP BY
         so.tid,
         so.barcode,
@@ -534,8 +514,8 @@ SELECT
     COUNT(DISTINCT nameen) FILTER (WHERE cnt_km > 0) AS marked_articles,
     COUNT(DISTINCT nameen) FILTER (WHERE cnt_km = 0) AS unmarked_articles,
 	SUM(basequantity) AS total_pieces,
-	SUM(cnt_km) AS marked_pieces,
-	SUM(basequantity)-SUM(cnt_km) AS unmarked_pieces
+	SUM(basequantity) FILTER (WHERE cnt_km > 0) AS marked_pieces,
+	SUM(basequantity) FILTER (WHERE cnt_km = 0) AS unmarked_pieces
 FROM base;
     """
 
@@ -1054,6 +1034,8 @@ with tab_accepted:
 # ============================================================
 # ВКЛАДКА — ПОДРОБНАЯ ИНФОРМАЦИЯ ПО ОС
 # ============================================================
+def trigger_os_search():
+    st.session_state["chz_os_enter_pressed"] = True
 
 with tab_search_os:
 
@@ -1079,7 +1061,8 @@ with tab_search_os:
             placeholder=(
                 "Введите номер ОС или его часть"
             ),
-            key="chz_os_input"
+            key="chz_os_input",
+            on_change=trigger_os_search
         )
 
     with col_search:
@@ -1102,7 +1085,14 @@ with tab_search_os:
     # НАЙТИ
     # ========================================================
 
-    if search_os_clicked:
+    if (
+        search_os_clicked
+        or st.session_state.get(
+            "chz_os_enter_pressed",
+            False
+        )
+    ):
+        st.session_state["chz_os_enter_pressed"] = False
 
         entered_os = os_input.strip()
 

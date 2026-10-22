@@ -597,6 +597,152 @@ GROUP BY ФИО, Зона
 ORDER BY "К-во операций" desc
     """,
 
+	    'Производительность ВШ': """
+WITH Params AS (
+     SELECT 
+		DATE (%s)::TIMESTAMP AS start_date,
+        DATE (%s)::TIMESTAMP AS end_date,	
+        ARRAY[
+            'Вывоз брака по заказу',
+            'Пополнение зоны пикинга',
+            'Возврат в зону хранения',
+            'Вывоз товара по заказу',
+            'Приемка материалов',
+            'Вымещение из зоны пикинга'
+        ]::citext[] AS tip_list,
+        ARRAY[
+            'Водитель штабелера', 'Водитель штабелера(INBOUND)', 'Штабелёр (IN)',
+            'Водитель УПШ', 'Водитель погрузчика', 'Погрузчик', 'Штабелёр (OUT)', 'УПШ'
+        ]::citext[] AS posts_list
+)
+SELECT 
+    tt.fio AS "ФИО",    
+    -- 1. Количество операций по заданным типам (Перемещения)
+    count(
+        case when tt.tip_rabota IN (SELECT unnest(tip_list) FROM Params) then 1 end
+    ) AS "Кол-во перемещений",
+    -- 2. Количество операций типа "Раскладка"
+    count(
+        case when tt.tip_rabota = 'Раскладка' then 1 end
+    ) AS "Раскладка",
+    -- 3. Количество операций типа "Привязка к местам"
+    count(
+        case when tt.tip_rabota = 'Привязка к местам' then 1 end
+    ) AS "Ручное перемещение ОС",    
+    -- === Производительность (кол-во операций в час) ===
+    -- Здесь вычитаются ВСЕ паузы > 10 минут
+    round(
+        count(tt.KOl_operations)::numeric 
+        / nullif(
+            extract(epoch from (
+                (max(tt.date_fanish) - min(tt.date_start)) 
+                - coalesce(
+                    sum(
+                        case when tt.окончание_предыдущей_операции is not null 
+                              and (tt.date_start - tt.окончание_предыдущей_операции) > interval '10 minutes' 
+                        then tt.date_start - tt.окончание_предыдущей_операции 
+                        else interval '0' end
+                    ), interval '0')
+            )) / 3600.0
+        , 0)
+    , 2) AS "Производительность",    
+    -- === Общее время простоя более 10 минут (но менее 5 часов) ===
+    to_char(
+        coalesce(
+            sum(
+                case when tt.окончание_предыдущей_операции is not null 
+                      and (tt.date_start - tt.окончание_предыдущей_операции) > interval '10 minutes' 
+                      and (tt.date_start - tt.окончание_предыдущей_операции) < interval '5 hours'
+                then tt.date_start - tt.окончание_предыдущей_операции 
+                else interval '0' end
+            ), interval '0'
+        )
+    , 'HH24:MI:SS') AS "Время простоя более 10 минут",    
+    -- === Количество раз простоя > 10 минут (но менее 5 часов) ===
+    count(
+        case when tt.окончание_предыдущей_операции is not null 
+              and (tt.date_start - tt.окончание_предыдущей_операции) > interval '10 minutes' 
+              and (tt.date_start - tt.окончание_предыдущей_операции) < interval '5 hours'
+        then 1 end
+    ) AS "Кол-во простоев более 10 минут"
+FROM (
+    SELECT 
+        tt.fio, 
+        tt.date_start, 
+        tt.date_fanish, 
+        LAG(tt.date_fanish) OVER (
+            PARTITION BY tt.fio
+            ORDER BY tt.date_start, tt.date_fanish
+        ) AS окончание_предыдущей_операции,
+        tt.tip_rabota, 
+        tt.KOl_operations 
+    FROM (
+        -- 1. Итоговый раскладка
+        SELECT 
+            COALESCE(NULLIF(p.shortname::text, ''), PR.NameRU::text)::text AS FIO,
+            COALESCE(sonm.need_taskdate, CL.recorddate) AS date_start, 
+            COALESCE(sonm.need_finishdate, CL.recorddate) AS date_fanish,
+            'Раскладка'::text AS tip_rabota,
+            CL.material_id::text AS KOl_operations
+        FROM ComplectationLog CL
+        JOIN ProductionResources PR ON PR.TID = CL.ProductionResource_id
+        JOIN ProductionResourceGroups pg ON pg.tid = pr.productionresourcegroup_id
+        JOIN PeopleProductionResources ppr ON ppr.productionresource_id = pr.parentresource_id
+        JOIN People p ON p.tid = ppr.people_id
+        LEFT JOIN Materials M ON M.tid = CL.Material_id
+        LEFT JOIN (
+            SELECT 
+                productionresource_id, material_id, taskdate::date AS task_date,
+                min(taskdate) AS need_taskdate, max(finishdate) AS need_finishdate
+            FROM StorageObjectNeedMaterials
+            WHERE productionresource_id IS NOT NULL AND material_id IS NOT NULL
+            GROUP BY productionresource_id, material_id, taskdate::date
+        ) sonm 
+          ON sonm.productionresource_id = CL.productionresource_id
+         AND sonm.material_id = CL.material_id
+         AND sonm.task_date = CL.recorddate::date
+        WHERE GREATEST(
+                COALESCE(sonm.need_taskdate, CL.recorddate),
+                COALESCE(sonm.need_finishdate, CL.recorddate)
+              )::date BETWEEN (SELECT start_date FROM Params) AND (SELECT end_date FROM Params)
+          AND EXISTS (SELECT 1 FROM repoperationlist o WHERE o.nameen = 'Putaway')
+        UNION ALL            
+        -- 2. Производительность ВЭШ
+        SELECT
+            p.shortname::text AS FIO,
+            ho.taskdate AS date_start,
+            ho.finishdate AS date_fanish,
+            ho.movementflowname::text AS tip_rabota,
+            ho.storageobjectname::text AS kol_operations
+        FROM hdr_ObjectMovement ho
+        JOIN ProductionResources pr ON pr.tid = ho.productionresource_id
+        JOIN ProductionResourceGroups pg ON pg.tid = pr.productionresourcegroup_id
+        JOIN PeopleProductionResources ppr ON ppr.productionresource_id = pr.parentresource_id
+        JOIN People p ON p.tid = ppr.people_id
+        WHERE ho.finishdate::date BETWEEN (SELECT start_date FROM Params) AND (SELECT end_date FROM Params)
+        UNION ALL            
+        -- 3. Привязка к местам
+        SELECT 
+            COALESCE(NULLIF(p.shortname::text, ''), PR.NameRU::text)::text AS FIO,
+            MAL.RecordDate AS date_start, 
+            MAL.RecordDate AS date_fanish, 
+            'Привязка к местам'::text AS tip_rabota,      
+            dbo.ObjectName(MAL.StorageObject_id) AS KOl_operations  
+        FROM ManualAllocationlog MAL
+        JOIN ProductionResources PR ON PR.tid = MAL.ProductionResource_id
+        JOIN ProductionResourceGroups pg ON pg.tid = pr.productionresourcegroup_id
+        JOIN PeopleProductionResources ppr ON ppr.productionresource_id = pr.parentresource_id
+        LEFT JOIN People p ON p.tid = ppr.people_id
+        LEFT JOIN StorageObjects so ON so.tid = MAL.StorageObject_id
+        WHERE 1=1  
+          AND MAL.operation IN ('ALLOCATE')
+          AND MAL.RecordDate::date BETWEEN (SELECT start_date FROM Params) AND (SELECT end_date FROM Params)
+          AND pg.nameru IN (SELECT unnest(posts_list) FROM Params)
+    ) tt
+) tt
+GROUP BY tt.fio;
+    """,
+
 	    'Жесткая упаковка': """
 select
 	d.deliverydate::date as "Дата отгрузки",
@@ -643,6 +789,45 @@ and d.deliverydate::date >= CURRENT_DATE
 and d.deliverytype_id = 7
 and d.deliverysubtype is not null
 group by d.deliverydate::date
+    """,
+
+	    'Оптимизация зоны отбора фронт': """
+with stock as (
+    select ws.materialunit_id,
+	       ws.material_id,
+           s.barcode,
+           l.locationname,
+           m.nameen,
+	       m.nameru,
+	       ws.basequantity
+    from warehousesummary ws
+    join storageobjects s on s.tid = ws.storageobject_id
+    join locations l      on l.tid = s.location_id
+    join materials m on m.tid = ws.material_id
+    where l.technozone_id = 105
+      and ws.basequantity > 0
+)
+select a.nameen as "Артикул", 
+	   a.nameru as "Наименование",
+       a.barcode as "Текущий ОС", 
+	   a.locationname as "Место",
+	   a.basequantity as "Количество",
+       b.barcode as "Предполагаемый ОС", 
+	   b.locationname as "Место ",
+	   b.basequantity as "Количество "
+from stock a
+join lateral (
+	select b.barcode,
+	       b.locationname,
+	       b.basequantity
+	from stock b
+    where b.materialunit_id = a.materialunit_id
+    and b.locationname <> a.locationname
+	and a.basequantity < b.basequantity
+	order by b.basequantity desc
+	limit 1
+	) as b on true
+order by a.nameen;
     """
 
 }
