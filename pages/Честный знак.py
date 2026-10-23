@@ -384,49 +384,64 @@ ORDER BY m.nameen;
 def get_all_os_with_chz():
 
     query = """
-     SELECT DISTINCT
-        l.locationname AS "Место",
-        so.barcode AS "Номер ОС",
-        m.nameen AS "Артикул",
-        m.nameru AS "Наименование",
-        st.nameru AS "Вид запаса",
-        COUNT(s.cis_code) FILTER (
-            WHERE s.cis_level = '0'
-            AND (w.barcodeobject_id = s.barcodeobject_id OR s.barcodeobject_id IS NULL)
-        ) AS "Количество КМ",
-        COUNT(s.cis_code) FILTER (
-            WHERE s.cis_level = '2'
-            AND (w.barcodeobject_id = s.barcodeobject_id OR s.barcodeobject_id IS NULL)
-        ) AS "Количество КИТУ",
-        w.basequantity AS "Количество штук",
-        hw.documentnumber AS "Входящая поставка"
-    FROM storageobjects AS so
-    JOIN warehousesummary AS w
-        ON so.tid = w.storageobject_id
-    AND w.basequantity > 0
-    LEFT JOIN cis.stock s
-        ON so.tid = s.storageobject_id
-    AND (w.barcodeobject_id = s.barcodeobject_id OR s.barcodeobject_id IS NULL)
-    JOIN materials AS m
-        ON w.material_id = m.tid
-    AND m.isam = '1'
-    JOIN stocktypes AS st
-        ON w.stocktype_id = st.tid
-    JOIN locations AS l
-        ON so.location_id = l.tid
-    LEFT JOIN tbl_warehouseincomeobjects AS tw
-        ON so.tid = tw.storageobject_id
-    LEFT JOIN hdr_warehouseincome AS hw
-        ON tw.transaction_id = hw.transaction_id
-    GROUP BY
-        l.locationname,
-        so.barcode,
-        m.nameen,
-        m.nameru,
-        st.nameru,
-        hw.documentnumber,
-        w.basequantity
-    ORDER BY m.nameen;
+     WITH base AS (
+        SELECT
+            l.locationname,
+            so.barcode,
+            m.nameen,
+            m.nameru AS nameru1,
+            st.nameru AS nameru2,
+            COUNT(s.cis_code) FILTER (
+                WHERE s.cis_level = '0'
+                AND (w.barcodeobject_id = s.barcodeobject_id OR s.barcodeobject_id IS NULL)
+            ) AS cnt_km,
+            COUNT(s.cis_code) FILTER (
+                WHERE s.cis_level = '2'
+                AND (w.barcodeobject_id = s.barcodeobject_id OR s.barcodeobject_id IS NULL)
+            ) AS cnt_kitu,
+            w.basequantity,
+            hw.documentnumber,
+            w.barcodeobject_id
+        FROM storageobjects AS so
+        JOIN warehousesummary AS w
+            ON so.tid = w.storageobject_id
+        AND w.basequantity > 0
+        LEFT JOIN cis.stock s
+            ON so.tid = s.storageobject_id
+        AND (w.barcodeobject_id = s.barcodeobject_id OR s.barcodeobject_id IS NULL)
+        JOIN materials AS m
+            ON w.material_id = m.tid
+        AND m.isam = '1'
+        JOIN stocktypes AS st
+            ON w.stocktype_id = st.tid
+        JOIN locations AS l
+            ON so.location_id = l.tid
+        LEFT JOIN tbl_warehouseincomeobjects AS tw
+            ON so.tid = tw.storageobject_id
+        LEFT JOIN hdr_warehouseincome AS hw
+            ON tw.transaction_id = hw.transaction_id
+        GROUP BY
+            l.locationname,
+            so.barcode,
+            m.nameen,
+            m.nameru,
+            st.nameru,
+            hw.documentnumber,
+            w.basequantity,
+            w.barcodeobject_id
+    )
+    SELECT
+            locationname AS "Место",
+            barcode AS "Номер ОС",
+            nameen AS "Артикул",
+            nameru1 AS "Наименование",
+            nameru2 AS "Вид запаса",
+            cnt_km AS "Количество КМ",
+            cnt_kitu AS "Количество КИТУ",
+            basequantity AS "Количество штук",
+            documentnumber AS "Входящая поставка"
+    FROM base
+    ORDER BY nameen;
     """
 
     try:
@@ -461,7 +476,7 @@ def get_chz_kpi():
 
     query = """
     WITH base AS (
-        SELECT DISTINCT
+        SELECT
         l.locationname,
         so.barcode,
         m.nameen,
@@ -471,7 +486,8 @@ def get_chz_kpi():
             WHERE s.cis_level = '0'
             AND (w.barcodeobject_id = s.barcodeobject_id OR s.barcodeobject_id IS NULL)
         ) AS cnt_km,
-        w.basequantity
+        w.basequantity,
+        w.barcodeobject_id
         FROM storageobjects AS so
         JOIN warehousesummary AS w
             ON so.tid = w.storageobject_id
@@ -492,7 +508,8 @@ def get_chz_kpi():
             m.nameen,
             m.nameru,
             st.nameru,
-            w.basequantity
+            w.basequantity,
+            w.barcodeobject_id
     )
     SELECT
         COUNT(DISTINCT barcode) AS total_os,
