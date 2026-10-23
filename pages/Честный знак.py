@@ -384,41 +384,36 @@ ORDER BY m.nameen;
 def get_all_os_with_chz():
 
     query = """
-     SELECT
+     SELECT DISTINCT
         l.locationname AS "Место",
         so.barcode AS "Номер ОС",
         m.nameen AS "Артикул",
         m.nameru AS "Наименование",
         st.nameru AS "Вид запаса",
-        COALESCE(s.cnt_km, 0) AS "Количество КМ",
-        COALESCE(s.cnt_kitu, 0) AS "Количество КИТУ",
-        SUM(w.basequantity) AS "Количество штук",
+        COUNT(s.cis_code) FILTER (
+            WHERE s.cis_level = '0'
+            AND (w.barcodeobject_id = s.barcodeobject_id OR s.barcodeobject_id IS NULL)
+        ) AS "Количество КМ",
+        COUNT(s.cis_code) FILTER (
+            WHERE s.cis_level = '2'
+            AND (w.barcodeobject_id = s.barcodeobject_id OR s.barcodeobject_id IS NULL)
+        ) AS "Количество КИТУ",
+        w.basequantity AS "Количество штук",
         hw.documentnumber AS "Входящая поставка"
     FROM storageobjects AS so
     JOIN warehousesummary AS w
         ON so.tid = w.storageobject_id
-        AND w.basequantity > 0
+    AND w.basequantity > 0
+    LEFT JOIN cis.stock s
+        ON so.tid = s.storageobject_id
+    AND (w.barcodeobject_id = s.barcodeobject_id OR s.barcodeobject_id IS NULL)
     JOIN materials AS m
         ON w.material_id = m.tid
-        AND m.isam = '1'
+    AND m.isam = '1'
     JOIN stocktypes AS st
         ON w.stocktype_id = st.tid
     JOIN locations AS l
         ON so.location_id = l.tid
-    LEFT JOIN (
-        SELECT
-            storageobject_id,
-            barcodeobject_id,
-            COUNT(DISTINCT cis_code) FILTER (WHERE cis_level = '0') AS cnt_km,
-            COUNT(DISTINCT parentcis_id) AS cnt_kitu
-        FROM cis.stock
-        GROUP BY
-            storageobject_id,
-            barcodeobject_id
-    ) AS s
-        ON (s.storageobject_id = so.tid
-		AND s.barcodeobject_id = w.barcodeobject_id)
-	    OR s.storageobject_id = so.tid
     LEFT JOIN tbl_warehouseincomeobjects AS tw
         ON so.tid = tw.storageobject_id
     LEFT JOIN hdr_warehouseincome AS hw
@@ -429,11 +424,9 @@ def get_all_os_with_chz():
         m.nameen,
         m.nameru,
         st.nameru,
-        s.cnt_km,
-        s.cnt_kitu,
-        hw.documentnumber
-    ORDER BY
-        so.barcode;
+        hw.documentnumber,
+        w.basequantity
+    ORDER BY m.nameen;
     """
 
     try:
@@ -468,55 +461,51 @@ def get_chz_kpi():
 
     query = """
     WITH base AS (
-    SELECT
-        so.tid AS storageobject_id,
-        so.barcode AS barcode,
-        COALESCE(s.cnt_km, 0) AS cnt_km,
-	    m.nameen,
-	    SUM(w.basequantity) AS basequantity
-    FROM storageobjects AS so
-    JOIN warehousesummary AS w
-        ON so.tid = w.storageobject_id
-        AND w.basequantity > 0
-    JOIN materials AS m
-        ON w.material_id = m.tid
-        AND m.isam = '1'
-    JOIN stocktypes AS st
-        ON w.stocktype_id = st.tid
-    JOIN locations AS l
-        ON so.location_id = l.tid
-    LEFT JOIN (
-        SELECT
-            storageobject_id,
-            barcodeobject_id,
-            COUNT(DISTINCT cis_code) FILTER (WHERE cis_level = '0') AS cnt_km,
-            COUNT(DISTINCT parentcis_id) AS cnt_kitu
-        FROM cis.stock
-        GROUP BY
-            storageobject_id,
-            barcodeobject_id
-    ) AS s
-        ON (s.storageobject_id = so.tid
-		AND s.barcodeobject_id = w.barcodeobject_id)
-	    OR s.storageobject_id = so.tid
-    GROUP BY
-        so.tid,
+        SELECT DISTINCT
+        l.locationname,
         so.barcode,
-        s.cnt_km,
-	    m.nameen
-)
-SELECT
-    COUNT(DISTINCT barcode) AS total_os,
-    COUNT(DISTINCT barcode) FILTER (WHERE cnt_km > 0) AS marked_os,
-    COUNT(DISTINCT barcode)
-        - COUNT(DISTINCT barcode) FILTER (WHERE cnt_km > 0) AS unmarked_os,
-	COUNT(DISTINCT nameen) AS total_articles,
-    COUNT(DISTINCT nameen) FILTER (WHERE cnt_km > 0) AS marked_articles,
-    COUNT(DISTINCT nameen) FILTER (WHERE cnt_km = 0) AS unmarked_articles,
-	SUM(basequantity) AS total_pieces,
-	SUM(basequantity) FILTER (WHERE cnt_km > 0) AS marked_pieces,
-	SUM(basequantity) FILTER (WHERE cnt_km = 0) AS unmarked_pieces
-FROM base;
+        m.nameen,
+        m.nameru,
+        st.nameru,
+        COUNT(s.cis_code) FILTER (
+            WHERE s.cis_level = '0'
+            AND (w.barcodeobject_id = s.barcodeobject_id OR s.barcodeobject_id IS NULL)
+        ) AS cnt_km,
+        w.basequantity
+        FROM storageobjects AS so
+        JOIN warehousesummary AS w
+            ON so.tid = w.storageobject_id
+        AND w.basequantity > 0
+        LEFT JOIN cis.stock s
+            ON so.tid = s.storageobject_id
+        AND (w.barcodeobject_id = s.barcodeobject_id OR s.barcodeobject_id IS NULL)
+        JOIN materials AS m
+            ON w.material_id = m.tid
+        AND m.isam = '1'
+        JOIN stocktypes AS st
+            ON w.stocktype_id = st.tid
+        JOIN locations AS l
+            ON so.location_id = l.tid
+        GROUP BY
+            l.locationname,
+            so.barcode,
+            m.nameen,
+            m.nameru,
+            st.nameru,
+            w.basequantity
+    )
+    SELECT
+        COUNT(DISTINCT barcode) AS total_os,
+        COUNT(DISTINCT barcode) FILTER (WHERE cnt_km > 0) AS marked_os,
+        COUNT(DISTINCT barcode)
+            - COUNT(DISTINCT barcode) FILTER (WHERE cnt_km > 0) AS unmarked_os,
+        COUNT(DISTINCT nameen) AS total_articles,
+        COUNT(DISTINCT nameen) FILTER (WHERE cnt_km > 0) AS marked_articles,
+        COUNT(DISTINCT nameen) FILTER (WHERE cnt_km = 0) AS unmarked_articles,
+        SUM(basequantity) AS total_pieces,
+        SUM(basequantity) FILTER (WHERE cnt_km > 0) AS marked_pieces,
+        SUM(basequantity) FILTER (WHERE cnt_km = 0) AS unmarked_pieces
+    FROM base;
     """
 
     try:

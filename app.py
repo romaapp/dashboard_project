@@ -48,12 +48,12 @@ pages = [
     ),
 
     st.Page(
-        "pages/timeline.py",
+        "pages/Timeline заявки.py",
         title="🕐 Timeline заявки"
     ),
 
     st.Page(
-        "pages/admin.py",
+        "pages/Администрирование.py",
         title="🔐 Администрирование"
     ),
 ]
