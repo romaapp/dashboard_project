@@ -313,20 +313,19 @@ SELECT DISTINCT
     m.nameru AS "Наименование",
     st.nameru AS "Вид запаса",
     COUNT(s.cis_code) FILTER (WHERE s.cis_level = '0') AS "Количество КМ",
-    COUNT(s.cis_code) FILTER (WHERE s.cis_level = '2') AS "Количество КИТУ",
+    COUNT(s.cis_code) FILTER (WHERE s.cis_level > '0') AS "Количество КИТУ",
     w.basequantity AS "Количество штук",
     hw.documentnumber AS "Входящая поставка"
 FROM cis.stock AS s
 JOIN storageobjects AS so
     ON s.storageobject_id = so.tid
-LEFT JOIN cis.stock AS pc
-    ON s.parentcis_id = pc.cis_id
 JOIN LATERAL (
     SELECT w.*
     FROM warehousesummary w
     WHERE (w.barcodeobject_id = s.barcodeobject_id
        AND w.storageobject_id = s.storageobject_id)
-	   OR w.storageobject_id = s.storageobject_id
+	   OR (w.storageobject_id = s.storageobject_id
+	   AND w.basequantity > 0)
     ORDER BY
         CASE WHEN w.barcodeobject_id = s.barcodeobject_id THEN 0 ELSE 1 END,
         w.tid
@@ -393,11 +392,9 @@ def get_all_os_with_chz():
             st.nameru AS nameru2,
             COUNT(s.cis_code) FILTER (
                 WHERE s.cis_level = '0'
-                AND (w.barcodeobject_id = s.barcodeobject_id OR s.barcodeobject_id IS NULL)
             ) AS cnt_km,
             COUNT(s.cis_code) FILTER (
-                WHERE s.cis_level = '2'
-                AND (w.barcodeobject_id = s.barcodeobject_id OR s.barcodeobject_id IS NULL)
+                WHERE s.cis_level > '0'
             ) AS cnt_kitu,
             w.basequantity,
             hw.documentnumber,
@@ -408,7 +405,10 @@ def get_all_os_with_chz():
         AND w.basequantity > 0
         LEFT JOIN cis.stock s
             ON so.tid = s.storageobject_id
-        AND (w.barcodeobject_id = s.barcodeobject_id OR s.barcodeobject_id IS NULL)
+        AND ((w.barcodeobject_id = s.barcodeobject_id
+        AND w.storageobject_id = s.storageobject_id)
+        OR (w.storageobject_id = s.storageobject_id
+        AND w.basequantity > 0))
         JOIN materials AS m
             ON w.material_id = m.tid
         AND m.isam = '1'
@@ -484,7 +484,6 @@ def get_chz_kpi():
         st.nameru,
         COUNT(s.cis_code) FILTER (
             WHERE s.cis_level = '0'
-            AND (w.barcodeobject_id = s.barcodeobject_id OR s.barcodeobject_id IS NULL)
         ) AS cnt_km,
         w.basequantity,
         w.barcodeobject_id
@@ -494,7 +493,9 @@ def get_chz_kpi():
         AND w.basequantity > 0
         LEFT JOIN cis.stock s
             ON so.tid = s.storageobject_id
-        AND (w.barcodeobject_id = s.barcodeobject_id OR s.barcodeobject_id IS NULL)
+        AND ((w.barcodeobject_id = s.barcodeobject_id
+        AND w.storageobject_id = s.storageobject_id)
+        OR w.storageobject_id = s.storageobject_id)
         JOIN materials AS m
             ON w.material_id = m.tid
         AND m.isam = '1'
