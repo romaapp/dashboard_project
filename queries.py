@@ -86,11 +86,11 @@ group by mh.x, mh.y
 
 	    'Статусы заявок отгрузки': """
         SELECT
-            d.purchasenumber,
-            ts.status_code,
-            tts.status_name,
-            u.login,
-            ts.record_date
+            d.purchasenumber as "Номер заявки",
+            ts.status_code as "Код",
+            tts.status_name as "Статус",
+            u.login as "Логин",
+            ts.record_date as "Дата"
         FROM transaction_statuses_log as ts
         JOIN users as u ON u.people_id = ts.people_id
         JOIN hdr_delivery as d ON d.transaction_id = ts.transaction_id
@@ -789,6 +789,25 @@ and d.deliverydate::date >= CURRENT_DATE
 and d.deliverytype_id = 7
 and d.deliverysubtype is not null
 group by d.deliverydate::date
+    """,
+
+	    'Пустые короба на отгрузке': """
+select distinct 
+	hd.shipmentdate::date as "Дата отгрузки",
+	hd.gatename as "Док",
+	hd.purchasenumber as "Номер заявки",
+	case when s1.barcode is null then s.barcode
+	else s1.barcode
+	end as "ОС"
+from hdr_delivery as hd
+join storageobjects as s
+    on hd.transaction_id = s.deliverytransaction_id
+left join storageobjects as s1
+    on s.bottomstorageobject_id = s1.tid
+left join warehousesummary as w
+    on s.tid = w.storageobject_id
+where hd.shipmentdate BETWEEN (%s)::DATE AND %s::DATE 
+  and w.storageobject_id is null;
     """,
 
 	    'Оптимизация зоны отбора фронт': """
