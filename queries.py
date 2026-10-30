@@ -856,11 +856,19 @@ GROUP BY tt.fio;
 
 	    'Отчёт экспедиции ОПТ (шуты)': """
 WITH 
--- ??? МЕСТО ДЛЯ ВВОДА ДАТЫ И ВРЕМЕНИ ???
+-- ??? МЕСТО ДЛЯ ВВОДА ДАТЫ ???
 TimeParams AS (
     SELECT 
-        DATE (%s)::TIMESTAMP AS start_time,
-        DATE (%s)::TIMESTAMP AS end_time
+        -- Если нужна конкретная дата:
+       -- date '2026-10-30'::timestamp AS start_time,
+    --    (date '2026-10-30' + interval '1 day')::timestamp AS end_time
+   date (%s)::timestamp AS start_time,
+        (date (%s) + interval '1 day')::timestamp AS end_time
+
+	
+        -- Если нужна сегодняшняя дата, раскомментируйте строки ниже:
+        -- date_trunc('day', now())::timestamp AS start_time,
+        -- date_trunc('day', now() + interval '1 day')::timestamp AS end_time
 ),
 -- 0. Справочник ресурсов (ID -> ФИО)
 ResourcesDict AS (
@@ -895,7 +903,7 @@ ConsolidationLogAgg AS (
       AND cl.transaction_id IS NOT NULL
     GROUP BY cl.productionresource_id
 ),
--- 3. Ручные перемещения
+-- 3. Ручные перемещения (ИСПРАВЛЕНА ОШИБКА)
 ManualAllocAgg AS (
     SELECT 
         a.productionresource_id,
@@ -938,8 +946,10 @@ CombinedData AS (
         "Снято с шутов",
         "Вывоз с шутов",
         "Ручные перемещения"
-    FROM JoinedData    
-    UNION ALL    
+    FROM JoinedData
+    
+    UNION ALL
+    
     SELECT 
         1 AS sort_order, 
         'TOTAL' AS "Сотрудник",
@@ -963,7 +973,24 @@ ORDER BY
     """,
 
 	    'Упаковка мезонин': """
-WITH AggregatedData AS (
+WITH 
+-- ??? МЕСТО ДЛЯ ВВОДА ДАТЫ И ВРЕМЕНИ ???
+TimeParams AS (
+    SELECT 
+        -- ВАРИАНТ 1: Конкретный день (с 00:00 до 23:59:59)
+       -- date '2026-10-30'::timestamp AS start_time,
+      --  (date '2026-10-30' + interval '1 day')::timestamp AS end_time
+         date (%s)::timestamp AS start_time,
+        (date (%s) + interval '1 day')::timestamp AS end_time
+        -- ВАРИАНТ 2: Конкретный интервал с часами (раскомментируйте это и закомментируйте верхнее)
+        -- timestamp '2026-10-30 08:00:00' AS start_time,
+        -- timestamp '2026-10-30 20:00:01' AS end_time
+        
+        -- ВАРИАНТ 3: Сегодняшний день
+        -- date_trunc('day', now())::timestamp AS start_time,
+        -- date_trunc('day', now() + interval '1 day')::timestamp AS end_time
+),
+AggregatedData AS (
     SELECT 
         COALESCE(NULLIF(p.shortname::text, ''), pr.nameru::text)::text AS "FIO",
         
@@ -974,7 +1001,7 @@ WITH AggregatedData AS (
         -- Количество артикулов
         COUNT(c.tid) FILTER (WHERE c.material_id IS NOT NULL) AS "Кол-во артикулов",
         
-        -- Веса и объём (сырые данные для точности)
+        -- Веса и объём
         SUM(c.basequantity * mu.nettoweight)::numeric(28,9) AS "Вес нетто (всего)",
         SUM(c.basequantity * mu.unitvolume)::numeric(28,9) AS "Объём (всего)"
         
@@ -985,8 +1012,11 @@ WITH AggregatedData AS (
     LEFT JOIN dbo.People p ON p.tid = ppr.people_id
     LEFT JOIN dbo.BarcodeObjects bo ON bo.tid = c.barcodeobject_id
     LEFT JOIN dbo.MaterialUnits mu ON mu.tid = bo.materialunit_id
-    WHERE c.recorddate BETWEEN (%s)::DATE AND %s::DATE
-         GROUP BY COALESCE(NULLIF(p.shortname::text, ''), pr.nameru::text)::text
+    -- Подставляем даты из параметров
+    CROSS JOIN TimeParams tp
+    WHERE c.recorddate >= tp.start_time
+      AND c.recorddate <  tp.end_time
+    GROUP BY COALESCE(NULLIF(p.shortname::text, ''), pr.nameru::text)::text
 ),
 CombinedData AS (
     -- 1. Данные по сотрудникам
