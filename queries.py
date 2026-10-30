@@ -458,6 +458,117 @@ where
 	and d.deliverydate::date BETWEEN (%s)::DATE AND %s::DATE
     """,
 
+	    'Жесткая упаковка': """
+select
+	d.deliverydate::date as "Дата отгрузки",
+	COUNT(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
+	NOT IN ('125', '162', '163', '164', '165', '166')) as "Арт. отобрано",
+	COALESCE(SUM(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
+	NOT IN ('125', '162', '163', '164', '165', '166')), 0) as "Шт. отобрано",
+	COUNT(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
+	IN ('125', '162', '163', '164', '165', '166')) as "Арт. отобрано пог.",
+	COALESCE(SUM(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
+	IN ('125', '162', '163', '164', '165', '166')), 0) as "Шт. отобрано пог.",	
+	COUNT(td.quantity) FILTER (WHERE m.materialgroup_id 
+	NOT IN ('125', '162', '163', '164', '165', '166'))
+	-COUNT(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
+	NOT IN ('125', '162', '163', '164', '165', '166'))  as "Арт. осталось",
+	SUM(td.quantity) FILTER (WHERE m.materialgroup_id 
+	NOT IN ('125', '162', '163', '164', '165', '166'))
+	-COALESCE(SUM(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
+	NOT IN ('125', '162', '163', '164', '165', '166')), 0) as "Шт. осталось",
+	COUNT(td.quantity) FILTER (WHERE m.materialgroup_id 
+	IN ('125', '162', '163', '164', '165', '166'))
+	-COUNT(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
+	IN ('125', '162', '163', '164', '165', '166'))  as "Арт. осталось пог.",
+	SUM(td.quantity) FILTER (WHERE m.materialgroup_id 
+	IN ('125', '162', '163', '164', '165', '166'))
+	-COALESCE(SUM(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
+	IN ('125', '162', '163', '164', '165', '166')), 0) as "Шт. осталось пог.",		
+	ROUND(COALESCE(SUM(td.sys_pickedbasequantity), 0)*SUM(mu.nettoweight),2)  as "Вес отобрано",
+	ROUND(COALESCE(SUM(td.sys_pickedbasequantity), 0)*SUM(mu.unitvolume),2)  as "Объем отобрано",
+	ROUND((SUM(td.quantity)-COALESCE(SUM(td.sys_pickedbasequantity), 0))*SUM(mu.nettoweight),2)  as "Вес осталось",
+	ROUND((SUM(td.quantity)-COALESCE(SUM(td.sys_pickedbasequantity), 0))*SUM(mu.unitvolume),2)  as "Объем осталось"
+from
+	hdr_deliveryrequest d
+join tbl_deliveryrequestmaterials as td on
+	td.transaction_id = d.transaction_id
+left join materialunits as mu on
+	td.material_id = mu.tid
+join materials as m on
+	td.material_id = m.tid
+--Проверка на вычерки и тип поставки
+where  td.shortagereason_id is null
+	and td.extrafield2 is not null
+and d.deliverydate::date >= CURRENT_DATE
+and d.deliverytype_id = 7
+and d.deliverysubtype is not null
+group by d.deliverydate::date
+    """,
+
+	    'Пустые короба на отгрузке': """
+select distinct 
+	hd.shipmentdate::date as "Дата отгрузки",
+	hd.gatename as "Док",
+	hd.purchasenumber as "Номер заявки",
+	case when s1.barcode is null then s.barcode
+	else s1.barcode
+	end as "ОС"
+from hdr_delivery as hd
+join storageobjects as s
+    on hd.transaction_id = s.deliverytransaction_id
+left join storageobjects as s1
+    on s.bottomstorageobject_id = s1.tid
+left join warehousesummary as w
+    on s.tid = w.storageobject_id
+where hd.shipmentdate BETWEEN (%s)::DATE AND %s::DATE 
+  and w.storageobject_id is null;
+    """,
+
+	    'Оптимизация зоны отбора фронт': """
+with stock as (
+    select ws.materialunit_id,
+	       ws.material_id,
+           s.barcode,
+           l.locationname,
+           m.nameen,
+	       m.nameru,
+	       ws.basequantity
+    from warehousesummary ws
+    join storageobjects s on s.tid = ws.storageobject_id
+    join locations l      on l.tid = s.location_id
+    join materials m on m.tid = ws.material_id
+    where l.technozone_id = 105
+      and ws.basequantity > 0
+)
+select a.nameen as "Артикул", 
+	   a.nameru as "Наименование",
+       a.barcode as "Текущий ОС", 
+	   a.locationname as "Место",
+	   a.basequantity as "Количество",
+       b.barcode as "Предполагаемый ОС", 
+	   b.locationname as "Место ",
+	   b.basequantity as "Количество "
+from stock a
+join lateral (
+	select b.barcode,
+	       b.locationname,
+	       b.basequantity
+	from stock b
+    where b.materialunit_id = a.materialunit_id
+    and b.locationname <> a.locationname
+	and a.basequantity < b.basequantity
+	order by b.basequantity desc
+	limit 1
+	) as b on true
+order by a.nameen;
+    """,
+
+
+# ============================================================
+# Отчеты Алексея
+# ============================================================
+
 	    'Производительность комплектации': """
 WITH operations AS (
     SELECT
@@ -743,111 +854,176 @@ FROM (
 GROUP BY tt.fio;
     """,
 
-	    'Жесткая упаковка': """
-select
-	d.deliverydate::date as "Дата отгрузки",
-	COUNT(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
-	NOT IN ('125', '162', '163', '164', '165', '166')) as "Арт. отобрано",
-	COALESCE(SUM(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
-	NOT IN ('125', '162', '163', '164', '165', '166')), 0) as "Шт. отобрано",
-	COUNT(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
-	IN ('125', '162', '163', '164', '165', '166')) as "Арт. отобрано пог.",
-	COALESCE(SUM(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
-	IN ('125', '162', '163', '164', '165', '166')), 0) as "Шт. отобрано пог.",	
-	COUNT(td.quantity) FILTER (WHERE m.materialgroup_id 
-	NOT IN ('125', '162', '163', '164', '165', '166'))
-	-COUNT(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
-	NOT IN ('125', '162', '163', '164', '165', '166'))  as "Арт. осталось",
-	SUM(td.quantity) FILTER (WHERE m.materialgroup_id 
-	NOT IN ('125', '162', '163', '164', '165', '166'))
-	-COALESCE(SUM(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
-	NOT IN ('125', '162', '163', '164', '165', '166')), 0) as "Шт. осталось",
-	COUNT(td.quantity) FILTER (WHERE m.materialgroup_id 
-	IN ('125', '162', '163', '164', '165', '166'))
-	-COUNT(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
-	IN ('125', '162', '163', '164', '165', '166'))  as "Арт. осталось пог.",
-	SUM(td.quantity) FILTER (WHERE m.materialgroup_id 
-	IN ('125', '162', '163', '164', '165', '166'))
-	-COALESCE(SUM(td.sys_pickedbasequantity) FILTER (WHERE m.materialgroup_id 
-	IN ('125', '162', '163', '164', '165', '166')), 0) as "Шт. осталось пог.",		
-	ROUND(COALESCE(SUM(td.sys_pickedbasequantity), 0)*SUM(mu.nettoweight),2)  as "Вес отобрано",
-	ROUND(COALESCE(SUM(td.sys_pickedbasequantity), 0)*SUM(mu.unitvolume),2)  as "Объем отобрано",
-	ROUND((SUM(td.quantity)-COALESCE(SUM(td.sys_pickedbasequantity), 0))*SUM(mu.nettoweight),2)  as "Вес осталось",
-	ROUND((SUM(td.quantity)-COALESCE(SUM(td.sys_pickedbasequantity), 0))*SUM(mu.unitvolume),2)  as "Объем осталось"
-from
-	hdr_deliveryrequest d
-join tbl_deliveryrequestmaterials as td on
-	td.transaction_id = d.transaction_id
-left join materialunits as mu on
-	td.material_id = mu.tid
-join materials as m on
-	td.material_id = m.tid
---Проверка на вычерки и тип поставки
-where  td.shortagereason_id is null
-	and td.extrafield2 is not null
-and d.deliverydate::date >= CURRENT_DATE
-and d.deliverytype_id = 7
-and d.deliverysubtype is not null
-group by d.deliverydate::date
-    """,
-
-	    'Пустые короба на отгрузке': """
-select distinct 
-	hd.shipmentdate::date as "Дата отгрузки",
-	hd.gatename as "Док",
-	hd.purchasenumber as "Номер заявки",
-	case when s1.barcode is null then s.barcode
-	else s1.barcode
-	end as "ОС"
-from hdr_delivery as hd
-join storageobjects as s
-    on hd.transaction_id = s.deliverytransaction_id
-left join storageobjects as s1
-    on s.bottomstorageobject_id = s1.tid
-left join warehousesummary as w
-    on s.tid = w.storageobject_id
-where hd.shipmentdate BETWEEN (%s)::DATE AND %s::DATE 
-  and w.storageobject_id is null;
-    """,
-
-	    'Оптимизация зоны отбора фронт': """
-with stock as (
-    select ws.materialunit_id,
-	       ws.material_id,
-           s.barcode,
-           l.locationname,
-           m.nameen,
-	       m.nameru,
-	       ws.basequantity
-    from warehousesummary ws
-    join storageobjects s on s.tid = ws.storageobject_id
-    join locations l      on l.tid = s.location_id
-    join materials m on m.tid = ws.material_id
-    where l.technozone_id = 105
-      and ws.basequantity > 0
+	    'Отчёт экспедиции ОПТ (шуты)': """
+WITH 
+-- ??? МЕСТО ДЛЯ ВВОДА ДАТЫ И ВРЕМЕНИ ???
+TimeParams AS (
+    SELECT 
+        DATE (%s)::TIMESTAMP AS start_time,
+        DATE (%s)::TIMESTAMP AS end_time
+),
+-- 0. Справочник ресурсов (ID -> ФИО)
+ResourcesDict AS (
+    SELECT 
+        pr.tid AS productionresource_id,
+        COALESCE(NULLIF(p.shortname::text, ''), pr.nameru::text)::text AS FIO
+    FROM dbo.ProductionResources pr
+    LEFT JOIN dbo.PeopleProductionResources ppr ON ppr.productionresource_id = pr.tid
+    LEFT JOIN dbo.People p ON p.tid = ppr.people_id
+),
+-- 1. Вывоз с шутов
+ConsolidationAgg AS (
+    SELECT 
+        ho.productionresource_id,
+        COUNT(ho.storageobjectname)::int AS consolidation_count
+    FROM dbo.hdr_ObjectMovement ho
+    CROSS JOIN TimeParams tp
+    WHERE ho.finishdate >= tp.start_time
+      AND ho.finishdate <  tp.end_time
+      AND ho.movementflowname = 'Консолидация завершена'
+    GROUP BY ho.productionresource_id
+),
+-- 2. Снято с шутов
+ConsolidationLogAgg AS (
+    SELECT 
+        cl.productionresource_id,
+        COUNT(cl.toobject_id)::int AS toobject_count
+    FROM dbo.ConsolidationLog cl 
+    CROSS JOIN TimeParams tp
+    WHERE cl.recorddate >= tp.start_time
+      AND cl.recorddate <  tp.end_time
+      AND cl.transaction_id IS NOT NULL
+    GROUP BY cl.productionresource_id
+),
+-- 3. Ручные перемещения
+ManualAllocAgg AS (
+    SELECT 
+        a.productionresource_id,
+        COUNT(1)::int AS cnt_allocations
+    FROM dbo.ManualAllocationlog a
+    CROSS JOIN TimeParams tp
+    WHERE a.recorddate >= tp.start_time
+      AND a.recorddate <  tp.end_time
+      AND a.operation = 'ALLOCATE' 
+      AND a.iscompleted = 1
+    GROUP BY a.productionresource_id
+),
+-- 4. ОБЫЧНЫЙ JOIN: берем только тех, у кого есть ручные перемещения
+MainData AS (
+    SELECT 
+        COALESCE(ca.productionresource_id, cla.productionresource_id) AS productionresource_id,
+        COALESCE(cla.toobject_count, 0)     AS "Снято с шутов",
+        COALESCE(ca.consolidation_count, 0) AS "Вывоз с шутов",
+        ma.cnt_allocations                  AS "Ручные перемещения"
+    FROM ConsolidationAgg ca
+    FULL OUTER JOIN ConsolidationLogAgg cla ON ca.productionresource_id = cla.productionresource_id
+    -- Обычный INNER JOIN отсекает тех, кого нет в ManualAllocAgg
+    JOIN ManualAllocAgg ma ON ma.productionresource_id = COALESCE(ca.productionresource_id, cla.productionresource_id)
+),
+-- 5. Приклеиваем ФИО
+JoinedData AS (
+    SELECT 
+        d.FIO AS "Сотрудник",
+        md."Снято с шутов",
+        md."Вывоз с шутов",
+        md."Ручные перемещения"
+    FROM MainData md
+    JOIN ResourcesDict d ON d.productionresource_id = md.productionresource_id
+),
+-- 6. Добавляем TOTAL
+CombinedData AS (
+    SELECT 
+        0 AS sort_order, 
+        "Сотрудник",
+        "Снято с шутов",
+        "Вывоз с шутов",
+        "Ручные перемещения"
+    FROM JoinedData    
+    UNION ALL    
+    SELECT 
+        1 AS sort_order, 
+        'TOTAL' AS "Сотрудник",
+        SUM("Снято с шутов"),
+        SUM("Вывоз с шутов"),
+        SUM("Ручные перемещения")
+    FROM JoinedData
 )
-select a.nameen as "Артикул", 
-	   a.nameru as "Наименование",
-       a.barcode as "Текущий ОС", 
-	   a.locationname as "Место",
-	   a.basequantity as "Количество",
-       b.barcode as "Предполагаемый ОС", 
-	   b.locationname as "Место ",
-	   b.basequantity as "Количество "
-from stock a
-join lateral (
-	select b.barcode,
-	       b.locationname,
-	       b.basequantity
-	from stock b
-    where b.materialunit_id = a.materialunit_id
-    and b.locationname <> a.locationname
-	and a.basequantity < b.basequantity
-	order by b.basequantity desc
-	limit 1
-	) as b on true
-order by a.nameen;
+-- 7. Финальный вывод
+SELECT 
+    "Сотрудник",
+    "Снято с шутов",
+    "Вывоз с шутов",
+    "Ручные перемещения"
+FROM CombinedData
+ORDER BY 
+    sort_order,
+    "Снято с шутов" DESC, 
+    "Вывоз с шутов" DESC,
+    "Ручные перемещения" DESC;
+    """,
+
+	    'Упаковка мезонин': """
+WITH AggregatedData AS (
+    SELECT 
+        COALESCE(NULLIF(p.shortname::text, ''), pr.nameru::text)::text AS "FIO",
+        
+        -- Считаем короба
+        COUNT(DISTINCT (c.deliverytransaction_id, c.storageobject_id)) 
+            FILTER (WHERE c.material_id IS NULL) AS "Кол-во коробов",
+        
+        -- Количество артикулов
+        COUNT(c.tid) FILTER (WHERE c.material_id IS NOT NULL) AS "Кол-во артикулов",
+        
+        -- Веса и объём (сырые данные для точности)
+        SUM(c.basequantity * mu.nettoweight)::numeric(28,9) AS "Вес нетто (всего)",
+        SUM(c.basequantity * mu.unitvolume)::numeric(28,9) AS "Объём (всего)"
+        
+    FROM dbo.controllog c     
+    JOIN dbo.ProductionResources pr ON pr.tid = c.productionresource_id
+    JOIN dbo.ProductionResourceGroups pg ON pg.tid = pr.productionresourcegroup_id
+    LEFT JOIN dbo.PeopleProductionResources ppr ON ppr.productionresource_id = pr.tid
+    LEFT JOIN dbo.People p ON p.tid = ppr.people_id
+    LEFT JOIN dbo.BarcodeObjects bo ON bo.tid = c.barcodeobject_id
+    LEFT JOIN dbo.MaterialUnits mu ON mu.tid = bo.materialunit_id
+    WHERE c.recorddate BETWEEN (%s)::DATE AND %s::DATE
+         GROUP BY COALESCE(NULLIF(p.shortname::text, ''), pr.nameru::text)::text
+),
+CombinedData AS (
+    -- 1. Данные по сотрудникам
+    SELECT 
+        0 AS sort_order,
+        "FIO",
+        "Кол-во коробов",
+        "Кол-во артикулов",
+        "Вес нетто (всего)",
+        "Объём (всего)"
+    FROM AggregatedData
+    
+    UNION ALL
+    
+    -- 2. Итоговая строка TOTAL
+    SELECT 
+        1 AS sort_order,
+        'TOTAL' AS "FIO",
+        SUM("Кол-во коробов"),
+        SUM("Кол-во артикулов"),
+        SUM("Вес нетто (всего)"),
+        SUM("Объём (всего)")
+    FROM AggregatedData
+)
+-- 3. Финальный вывод с ОКРУГЛЕНИЕМ
+SELECT 
+    "FIO",
+    "Кол-во коробов",
+    "Кол-во артикулов",
+    ROUND("Вес нетто (всего)") AS "Вес нетто (всего)", -- Округление до целого
+    ROUND("Объём (всего)", 1) AS "Объём (всего)"      -- Округление до десятых
+FROM CombinedData
+ORDER BY 
+    sort_order, 
+    "Кол-во коробов" DESC;
     """
+
 
 }
 
