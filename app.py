@@ -25,22 +25,56 @@ st.set_page_config(
 # ГЛОБАЛЬНАЯ СТАТИСТИКА ПО ВЫДЕЛЕННЫМ ЯЧЕЙКАМ
 # ============================================================
 
-_original_dataframe = st.dataframe
+# Сохраняем оригинальную функцию dataframe только один раз.
+# Это предотвращает рекурсию при повторных запусках Streamlit.
+if not hasattr(st, "_original_dataframe_for_stats"):
 
+    st._original_dataframe_for_stats = st.dataframe
+
+
+# ============================================================
+# ФУНКЦИЯ СТАТИСТИКИ ПО ВЫДЕЛЕННЫМ ЯЧЕЙКАМ
+# ============================================================
 
 def dataframe_with_selection(*args, **kwargs):
-    kwargs.setdefault("on_select", "rerun")
-    kwargs.setdefault("selection_mode", "multi-cell")
 
-    event = _original_dataframe(*args, **kwargs)
+    kwargs.setdefault(
+        "on_select",
+        "rerun"
+    )
 
-    df = args[0] if args else kwargs.get("data")
+    kwargs.setdefault(
+        "selection_mode",
+        "multi-cell"
+    )
+
+    # Всегда используем сохранённый оригинальный dataframe,
+    # а не текущий st.dataframe.
+    event = st._original_dataframe_for_stats(
+        *args,
+        **kwargs
+    )
+
+    df = (
+        args[0]
+        if args
+        else kwargs.get("data")
+    )
 
     if not isinstance(df, pd.DataFrame):
         return event
 
-    selection = getattr(event, "selection", None)
-    selected_cells = getattr(selection, "cells", [])
+    selection = getattr(
+        event,
+        "selection",
+        None
+    )
+
+    selected_cells = getattr(
+        selection,
+        "cells",
+        []
+    )
 
     if not selected_cells:
         return event
@@ -48,13 +82,29 @@ def dataframe_with_selection(*args, **kwargs):
     selected_values = []
 
     for row_index, column_name in selected_cells:
+
         if column_name not in df.columns:
             continue
 
-        value = df.iloc[row_index][column_name]
+        try:
 
-        # Разрешаем числовые значения, сохранённые как текст
+            value = df.iloc[
+                row_index
+            ][column_name]
+
+        except (
+            IndexError,
+            KeyError
+        ):
+
+            continue
+
+        # ----------------------------------------------------
+        # ЧИСЛА, СОХРАНЁННЫЕ КАК ТЕКСТ
+        # ----------------------------------------------------
+
         if isinstance(value, str):
+
             value = (
                 value.strip()
                 .replace("\u00a0", "")
@@ -62,8 +112,15 @@ def dataframe_with_selection(*args, **kwargs):
             )
 
             # Поддержка десятичной запятой
-            if "," in value and "." not in value:
-                value = value.replace(",", ".")
+            if (
+                "," in value
+                and "." not in value
+            ):
+
+                value = value.replace(
+                    ",",
+                    "."
+                )
 
         numeric_value = pd.to_numeric(
             value,
@@ -71,7 +128,10 @@ def dataframe_with_selection(*args, **kwargs):
         )
 
         if pd.notna(numeric_value):
-            selected_values.append(numeric_value)
+
+            selected_values.append(
+                numeric_value
+            )
 
     numbers = pd.to_numeric(
         pd.Series(selected_values),
@@ -81,8 +141,14 @@ def dataframe_with_selection(*args, **kwargs):
     if numbers.empty:
         return event
 
-    # Показываем статистику только один раз за запуск
-    if not st.session_state.get("_stats_rendered_this_run", False):
+    # --------------------------------------------------------
+    # ПОКАЗЫВАЕМ СТАТИСТИКУ ОДИН РАЗ ЗА ЗАПУСК
+    # --------------------------------------------------------
+
+    if not st.session_state.get(
+        "_stats_rendered_this_run",
+        False
+    ):
 
         stats_text = (
             f"📊 Ячеек: {len(numbers)}"
@@ -115,12 +181,20 @@ def dataframe_with_selection(*args, **kwargs):
             unsafe_allow_html=True
         )
 
-        st.session_state["_stats_rendered_this_run"] = True
+        st.session_state[
+            "_stats_rendered_this_run"
+        ] = True
 
     return event
 
 
-st.dataframe = dataframe_with_selection
+# ============================================================
+# ПОДМЕНЯЕМ dataframe ТОЛЬКО ОДИН РАЗ
+# ============================================================
+
+if st.dataframe is not dataframe_with_selection:
+
+    st.dataframe = dataframe_with_selection
 
 
 # ============================================================
@@ -144,19 +218,19 @@ pages = [
     ),
 
     st.Page(
-        "pages/Разработка.py",
-        title="🛠️ Разработка"
-    ),
-
-    st.Page(
         "pages/Честный знак.py",
         title="🏷️ Честный знак"
     ),
 
     st.Page(
-        "pages/Timeline заявки.py",
-        title="🕐 Timeline заявки"
+        "pages/Разработка.py",
+        title="🛠️ Разработка"
     ),
+
+    # st.Page(
+    #     "pages/Timeline заявки.py",
+    #     title="🕐 Timeline заявки"
+    # ),
 
     st.Page(
         "pages/Администрирование.py",
