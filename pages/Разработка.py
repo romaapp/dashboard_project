@@ -215,7 +215,7 @@ with col_button:
 with col_total:
 
     st.metric(
-        ":material/prompt_suggestion: Всего предложений",
+        ":material/all_inclusive: Всего предложений",
         stats["total"]
     )
 
@@ -223,7 +223,7 @@ with col_total:
 with col_active:
 
     st.metric(
-        ":material/hourglass_bottom: В работе",
+        ":material/update: В работе",
         stats["active"]
     )
 
@@ -307,7 +307,7 @@ else:
         status_text = (
             ":material/task_alt: Выполнено"
             if completed
-            else ":material/hourglass_bottom: В работе"
+            else ":material/update: В работе"
         )
 
 
@@ -322,7 +322,7 @@ else:
         # ----------------------------------------------------
 
         with st.expander(
-            f":material/prompt_suggestion: {title}  •  :material/account_circle: {author}  •  {status_text}",
+            f":material/label: {title}  •  :material/person_add: {author}  •  {status_text}",
             expanded=False
         ):
 

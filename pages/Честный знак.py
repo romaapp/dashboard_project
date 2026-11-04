@@ -10,6 +10,16 @@ from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 from styles import load_css
 
+from queries_marks import (
+    QUERY_ACCEPTED_MARKS,
+    QUERY_SEARCH_OS,
+    QUERY_MARKS_BY_OS,
+    QUERY_ALL_OS,
+    QUERY_ALL_OS_WITH_CHZ,
+    QUERY_CHZ_KPI,
+    QUERY_SEARCH_BY_MARK,
+)
+
 
 # ============================================================
 # ЗАГРУЗКА .ENV
@@ -104,29 +114,6 @@ def get_db_connection():
 @st.cache_data(ttl=60)
 def get_accepted_marks(date_from, date_to):
 
-    query = """
-    SELECT
-        so.barcode AS "Номер ОС",
-        s.cis_code AS "КИ",
-        pc.cis_code AS "КИТУ",
-        s.receiptdate::date AS "Дата приемки"
-
-    FROM cis.stock AS s
-
-    JOIN storageobjects AS so
-        ON s.storageobject_id = so.tid
-
-    JOIN cis.stock AS pc
-        ON s.parentcis_id::text = pc.cis_id::text
-
-    WHERE
-        s.receiptdate::date
-        BETWEEN (%s)::DATE AND (%s)::DATE
-
-    ORDER BY
-        s.receiptdate;
-    """
-
     try:
 
         with get_db_connection() as conn:
@@ -136,7 +123,7 @@ def get_accepted_marks(date_from, date_to):
             ) as cur:
 
                 cur.execute(
-                    query,
+                    QUERY_ACCEPTED_MARKS,
                     (
                         date_from,
                         date_to
@@ -170,24 +157,6 @@ def search_os(search_value):
     if not search_value:
         return []
 
-    query = """
-    SELECT DISTINCT
-        so.barcode AS barcode
-
-    FROM cis.stock AS s
-
-    JOIN storageobjects AS so
-        ON s.storageobject_id = so.tid
-
-    WHERE
-        so.barcode ILIKE %s
-
-    ORDER BY
-        so.barcode
-
-    LIMIT 50;
-    """
-
     try:
 
         with get_db_connection() as conn:
@@ -197,7 +166,7 @@ def search_os(search_value):
             ) as cur:
 
                 cur.execute(
-                    query,
+                    QUERY_SEARCH_OS,
                     (
                         f"%{search_value}%",
                     )
@@ -226,50 +195,6 @@ def search_os(search_value):
 @st.cache_data(ttl=60)
 def get_marks_by_os(os_number):
 
-    query = """
-SELECT DISTINCT
-    l.locationname AS "Место",
-    so.barcode AS "Номер ОС",
-    m.nameen AS "Артикул",
-    m.nameru AS "Наименование",
-    st.nameru AS "Вид запаса",
-    s.cis_code AS "КИ",
-    pc.cis_code AS "КИТУ",
-    s.receiptdate::date AS "Дата приемки",
-    hw.documentnumber AS "Входящая поставка"
-FROM cis.stock AS s
-JOIN storageobjects AS so
-    ON s.storageobject_id = so.tid
-LEFT JOIN cis.stock AS pc
-    ON s.parentcis_id = pc.cis_id
-JOIN LATERAL (
-    SELECT w.*
-    FROM warehousesummary w
-    WHERE (w.barcodeobject_id = s.barcodeobject_id
-       AND w.storageobject_id = s.storageobject_id)
-	   OR w.storageobject_id = s.storageobject_id
-    ORDER BY
-        CASE WHEN w.barcodeobject_id = s.barcodeobject_id THEN 0 ELSE 1 END,
-        w.tid
-    LIMIT 1
-) w ON TRUE
-JOIN materials AS m
-    ON w.material_id = m.tid
-   AND m.isam = '1'
-JOIN stocktypes AS st
-    ON w.stocktype_id = st.tid
-JOIN locations AS l
-    ON so.location_id = l.tid
-LEFT JOIN tbl_warehouseincomeobjects AS tw
-    ON so.tid = tw.storageobject_id
-LEFT JOIN hdr_warehouseincome AS hw
-    ON tw.transaction_id = hw.transaction_id
-WHERE
-    s.cis_level = '0'
-    AND so.barcode = %s
-ORDER BY m.nameen;
-    """
-
     try:
 
         with get_db_connection() as conn:
@@ -279,7 +204,7 @@ ORDER BY m.nameen;
             ) as cur:
 
                 cur.execute(
-                    query,
+                    QUERY_MARKS_BY_OS,
                     (
                         os_number.strip(),
                     )
@@ -299,58 +224,11 @@ ORDER BY m.nameen;
 
 
 # ============================================================
-# ВСЕ ОС С МАРКАМИ
+# ПОИСК ПО МАРКЕ
 # ============================================================
 
 @st.cache_data(ttl=60)
-def get_all_os():
-
-    query = """
-SELECT DISTINCT
-	l.locationname AS "Место",
-    so.barcode AS "Номер ОС",
-    m.nameen AS "Артикул",
-    m.nameru AS "Наименование",
-    st.nameru AS "Вид запаса",
-    COUNT(s.cis_code) FILTER (WHERE s.cis_level = '0') AS "Количество КМ",
-    COUNT(s.cis_code) FILTER (WHERE s.cis_level > '0') AS "Количество КИТУ",
-    w.basequantity AS "Количество штук",
-    hw.documentnumber AS "Входящая поставка"
-FROM cis.stock AS s
-JOIN storageobjects AS so
-    ON s.storageobject_id = so.tid
-JOIN LATERAL (
-    SELECT w.*
-    FROM warehousesummary w
-    WHERE (w.barcodeobject_id = s.barcodeobject_id
-       AND w.storageobject_id = s.storageobject_id)
-	   OR (w.storageobject_id = s.storageobject_id
-	   AND w.basequantity > 0)
-    ORDER BY
-        CASE WHEN w.barcodeobject_id = s.barcodeobject_id THEN 0 ELSE 1 END,
-        w.tid
-    LIMIT 1
-) w ON TRUE
-JOIN materials AS m
-    ON w.material_id = m.tid
-   AND m.isam = '1'
-JOIN stocktypes AS st
-    ON w.stocktype_id = st.tid
-JOIN locations AS l
-    ON so.location_id = l.tid
-LEFT JOIN tbl_warehouseincomeobjects AS tw
-    ON so.tid = tw.storageobject_id
-LEFT JOIN hdr_warehouseincome AS hw
-    ON tw.transaction_id = hw.transaction_id
-GROUP BY l.locationname,
-    so.barcode,
-    m.nameen,
-    m.nameru,
-    st.nameru,
-    hw.documentnumber,
-	w.basequantity
-ORDER BY m.nameen;
-    """
+def get_mark_info(mark_code):
 
     try:
 
@@ -360,7 +238,44 @@ ORDER BY m.nameen;
                 cursor_factory=RealDictCursor
             ) as cur:
 
-                cur.execute(query)
+                cur.execute(
+                    QUERY_SEARCH_BY_MARK,
+                    (
+                        mark_code.strip(),
+                    )
+                )
+
+                results = cur.fetchall()
+
+                return pd.DataFrame(results)
+
+    except Exception as e:
+
+        st.error(
+            f"Ошибка поиска марки: {e}"
+        )
+
+        return pd.DataFrame()
+
+
+# ============================================================
+# ВСЕ ОС С МАРКАМИ
+# ============================================================
+
+@st.cache_data(ttl=60)
+def get_all_os():
+
+    try:
+
+        with get_db_connection() as conn:
+
+            with conn.cursor(
+                cursor_factory=RealDictCursor
+            ) as cur:
+
+                cur.execute(
+                    QUERY_ALL_OS
+                )
 
                 results = cur.fetchall()
 
@@ -382,68 +297,6 @@ ORDER BY m.nameen;
 @st.cache_data(ttl=60)
 def get_all_os_with_chz():
 
-    query = """
-     WITH base AS (
-        SELECT
-            l.locationname,
-            so.barcode,
-            m.nameen,
-            m.nameru AS nameru1,
-            st.nameru AS nameru2,
-            COUNT(s.cis_code) FILTER (
-                WHERE s.cis_level = '0'
-            ) AS cnt_km,
-            COUNT(s.cis_code) FILTER (
-                WHERE s.cis_level > '0'
-            ) AS cnt_kitu,
-            w.basequantity,
-            hw.documentnumber,
-            w.barcodeobject_id
-        FROM storageobjects AS so
-        JOIN warehousesummary AS w
-            ON so.tid = w.storageobject_id
-        AND w.basequantity > 0
-        LEFT JOIN cis.stock s
-            ON so.tid = s.storageobject_id
-        AND ((w.barcodeobject_id = s.barcodeobject_id
-        AND w.storageobject_id = s.storageobject_id)
-        OR (w.storageobject_id = s.storageobject_id
-        AND w.basequantity > 0))
-        JOIN materials AS m
-            ON w.material_id = m.tid
-        AND m.isam = '1'
-        JOIN stocktypes AS st
-            ON w.stocktype_id = st.tid
-        JOIN locations AS l
-            ON so.location_id = l.tid
-        LEFT JOIN tbl_warehouseincomeobjects AS tw
-            ON so.tid = tw.storageobject_id
-        LEFT JOIN hdr_warehouseincome AS hw
-            ON tw.transaction_id = hw.transaction_id
-        GROUP BY
-            l.locationname,
-            so.barcode,
-            m.nameen,
-            m.nameru,
-            st.nameru,
-            hw.documentnumber,
-            w.basequantity,
-            w.barcodeobject_id
-    )
-    SELECT
-            locationname AS "Место",
-            barcode AS "Номер ОС",
-            nameen AS "Артикул",
-            nameru1 AS "Наименование",
-            nameru2 AS "Вид запаса",
-            cnt_km AS "Количество КМ",
-            cnt_kitu AS "Количество КИТУ",
-            basequantity AS "Количество штук",
-            documentnumber AS "Входящая поставка"
-    FROM base
-    ORDER BY nameen;
-    """
-
     try:
 
         with get_db_connection() as conn:
@@ -452,7 +305,9 @@ def get_all_os_with_chz():
                 cursor_factory=RealDictCursor
             ) as cur:
 
-                cur.execute(query)
+                cur.execute(
+                    QUERY_ALL_OS_WITH_CHZ
+                )
 
                 results = cur.fetchall()
 
@@ -474,72 +329,32 @@ def get_all_os_with_chz():
 @st.cache_data(ttl=60)
 def get_chz_kpi():
 
-    query = """
-    WITH base AS (
-        SELECT
-        l.locationname,
-        so.barcode,
-        m.nameen,
-        m.nameru,
-        st.nameru,
-        COUNT(s.cis_code) FILTER (
-            WHERE s.cis_level = '0'
-        ) AS cnt_km,
-        w.basequantity,
-        w.barcodeobject_id
-        FROM storageobjects AS so
-        JOIN warehousesummary AS w
-            ON so.tid = w.storageobject_id
-        AND w.basequantity > 0
-        LEFT JOIN cis.stock s
-            ON so.tid = s.storageobject_id
-        AND ((w.barcodeobject_id = s.barcodeobject_id
-        AND w.storageobject_id = s.storageobject_id)
-        OR w.storageobject_id = s.storageobject_id)
-        JOIN materials AS m
-            ON w.material_id = m.tid
-        AND m.isam = '1'
-        JOIN stocktypes AS st
-            ON w.stocktype_id = st.tid
-        JOIN locations AS l
-            ON so.location_id = l.tid
-        GROUP BY
-            l.locationname,
-            so.barcode,
-            m.nameen,
-            m.nameru,
-            st.nameru,
-            w.basequantity,
-            w.barcodeobject_id
-    )
-    SELECT
-        COUNT(DISTINCT barcode) AS total_os,
-        COUNT(DISTINCT barcode) FILTER (WHERE cnt_km > 0) AS marked_os,
-        COUNT(DISTINCT barcode)
-            - COUNT(DISTINCT barcode) FILTER (WHERE cnt_km > 0) AS unmarked_os,
-        COUNT(DISTINCT nameen) AS total_articles,
-        COUNT(DISTINCT nameen) FILTER (WHERE cnt_km > 0) AS marked_articles,
-        COUNT(DISTINCT nameen) FILTER (WHERE cnt_km = 0) AS unmarked_articles,
-        SUM(basequantity) AS total_pieces,
-        SUM(basequantity) FILTER (WHERE cnt_km > 0) AS marked_pieces,
-        SUM(basequantity) FILTER (WHERE cnt_km = 0) AS unmarked_pieces
-    FROM base;
-    """
-
     try:
+
         with get_db_connection() as conn:
+
             with conn.cursor(
                 cursor_factory=RealDictCursor
             ) as cur:
-                cur.execute(query)
+
+                cur.execute(
+                    QUERY_CHZ_KPI
+                )
+
                 result = cur.fetchone()
 
-                return dict(result) if result else {}
+                return (
+                    dict(result)
+                    if result
+                    else {}
+                )
 
     except Exception as e:
+
         st.error(
             f"Ошибка получения ключевых показателей: {e}"
         )
+
         return {}
 
 
@@ -788,6 +603,20 @@ if "chz_os_data_loaded" not in st.session_state:
 
 
 # ------------------------------------------------------------
+# Поиск по марке
+# ------------------------------------------------------------
+
+if "chz_mark_data" not in st.session_state:
+
+    st.session_state.chz_mark_data = pd.DataFrame()
+
+
+if "chz_mark_data_loaded" not in st.session_state:
+
+    st.session_state.chz_mark_data_loaded = False
+
+
+# ------------------------------------------------------------
 # Все ОС
 # ------------------------------------------------------------
 
@@ -819,13 +648,14 @@ if "chz_all_os_chz_data_loaded" not in st.session_state:
 # ВКЛАДКИ
 # ============================================================
 
-tab_accepted, tab_search_os, tab_all_os, tab_all_os_chz, tab_kpi = st.tabs(
+tab_accepted, tab_search_os, tab_search_mark, tab_all_os, tab_all_os_chz, tab_kpi = st.tabs(
     [
-        ":material/bookmark_stacks: Принятые марки",
+        ":material/enable: Принятые марки",
         ":material/pageview: Подробная информация по ОС",
+        ":material/manage_search: Поиск по марке",
         ":material/package_2: Все ОС с марками",
         ":material/package_2: Все ОС с маркировкой",
-        ":material/monitoring: Ключевые показатели"
+        ":material/whatshot: Ключевые показатели"
     ]
 )
 
@@ -1358,6 +1188,180 @@ with tab_search_os:
                         "officedocument.spreadsheetml.sheet"
                     ),
                     key="chz_os_download",
+                    use_container_width=True
+                )
+
+
+# ============================================================
+# ВКЛАДКА — ПОИСК ПО МАРКЕ
+# ============================================================
+
+def trigger_mark_search():
+
+    st.session_state[
+        "chz_mark_enter_pressed"
+    ] = True
+
+
+with tab_search_mark:
+
+    st.caption(
+        "Поиск информации по коду марки."
+    )
+
+    # ========================================================
+    # ПОЛЕ ПОИСКА
+    # ========================================================
+
+    col_input, col_search, col_download = (
+        st.columns(
+            [5, 1, 1],
+            gap="small"
+        )
+    )
+
+    with col_input:
+
+        mark_input = st.text_input(
+            "Код марки:",
+            placeholder=(
+                "Введите код марки или его часть"
+            ),
+            key="chz_mark_input",
+            on_change=trigger_mark_search
+        )
+
+    with col_search:
+
+        st.markdown(
+            """
+            <div style="height: 28px;"></div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        search_mark_clicked = st.button(
+            ":material/search: Найти",
+            key="chz_mark_search",
+            type="primary",
+            use_container_width=True
+        )
+
+    # ========================================================
+    # ПОИСК
+    # ========================================================
+
+    if (
+        search_mark_clicked
+        or st.session_state.get(
+            "chz_mark_enter_pressed",
+            False
+        )
+    ):
+
+        st.session_state[
+            "chz_mark_enter_pressed"
+        ] = False
+
+        entered_mark = mark_input.strip()
+
+        if not entered_mark:
+
+            st.warning(
+                "Введите код марки."
+            )
+
+        else:
+
+            with st.spinner(
+                "Поиск марки..."
+            ):
+
+                df_mark = get_mark_info(
+                    entered_mark
+                )
+
+            st.session_state.chz_mark_data = (
+                df_mark
+            )
+
+            st.session_state.chz_mark_data_loaded = (
+                True
+            )
+
+    # ========================================================
+    # РЕЗУЛЬТАТ
+    # ========================================================
+
+    if st.session_state.chz_mark_data_loaded:
+
+        df_mark = (
+            st.session_state.chz_mark_data
+        )
+
+        if df_mark.empty:
+
+            st.warning(
+                f"Марка «{mark_input}» не найдена."
+            )
+
+        else:
+
+            st.markdown("---")
+
+            # =================================================
+            # ТАБЛИЦА
+            # =================================================
+
+            st.dataframe(
+                df_mark,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+
+                    "КИ": st.column_config.TextColumn(
+                        "КИ"
+                    ),
+
+                    "КИТУ": st.column_config.TextColumn(
+                        "КИТУ"
+                    ),
+
+                    "Номер ОС": st.column_config.TextColumn(
+                        "Номер ОС"
+                    )
+                }
+            )
+
+            # =================================================
+            # EXCEL
+            # =================================================
+
+            excel_data = dataframe_to_excel(
+                df_mark,
+                "Поиск по марке"
+            )
+
+            with col_download:
+
+                st.markdown(
+                    """
+                    <div style="height: 28px;"></div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                st.download_button(
+                    ":material/download: Скачать",
+                    data=excel_data,
+                    file_name=(
+                        f"mark_{mark_input}.xlsx"
+                    ),
+                    mime=(
+                        "application/vnd.openxmlformats-"
+                        "officedocument.spreadsheetml.sheet"
+                    ),
+                    key="chz_mark_download",
                     use_container_width=True
                 )
 

@@ -220,7 +220,7 @@ def filter_dataframe(df, key):
     with col1:
 
         st.text_input(
-            "🔎 Поиск по таблице",
+            ":material/search: Поиск по таблице",
             key=key,
             placeholder="Введите значение для поиска...",
             on_change=apply_search
@@ -240,7 +240,7 @@ def filter_dataframe(df, key):
         )
 
         st.button(
-            "🔎 Найти",
+            ":material/search: Найти",
             key=f"{key}_search",
             use_container_width=True,
             on_click=apply_search
@@ -260,7 +260,7 @@ def filter_dataframe(df, key):
         )
 
         st.button(
-            "✖ Очистить",
+            ":material/cancel: Очистить",
             key=f"{key}_clear",
             use_container_width=True,
             on_click=clear_search
@@ -311,7 +311,7 @@ def filter_dataframe(df, key):
         )
 
         st.download_button(
-            "⇩ Скачать",
+            ":material/download: Скачать",
             data=excel_data,
             file_name=f"{key}.xlsx",
             mime=(
@@ -376,7 +376,7 @@ def display_report_header(report_name):
         if is_favorite:
 
             if st.button(
-                ":material/star_half: Удалить из избранного",
+                ":material/heart_minus: Удалить из избранного",
                 key=f"favorite_remove_{report_name}",
                 use_container_width=True
             ):
@@ -390,7 +390,7 @@ def display_report_header(report_name):
         else:
 
             if st.button(
-                ":material/star: Добавить в избранное",
+                ":material/heart_plus: Добавить в избранное",
                 key=f"favorite_add_{report_name}",
                 use_container_width=True
             ):
