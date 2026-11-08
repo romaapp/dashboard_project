@@ -179,6 +179,7 @@ WITH base AS (
         ON w.stocktype_id = st.tid
     JOIN locations AS l
         ON so.location_id = l.tid
+        AND l.tid <> '1000001'
     LEFT JOIN tbl_warehouseincomeobjects AS tw
         ON so.tid = tw.storageobject_id
     LEFT JOIN hdr_warehouseincome AS hw
@@ -240,6 +241,7 @@ WITH base AS (
         ON w.stocktype_id = st.tid
     JOIN locations AS l
         ON so.location_id = l.tid
+        AND l.tid <> '1000001'
     GROUP BY
         l.locationname,
         so.barcode,
