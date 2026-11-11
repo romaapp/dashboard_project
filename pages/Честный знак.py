@@ -386,6 +386,75 @@ def dataframe_to_excel(
 
 
 # ============================================================
+# ПОИСК МАССИВА
+# ============================================================
+
+@st.dialog(
+    "Поиск массива",
+    width="medium"
+)
+def array_search_dialog(
+    df,
+    key
+):
+
+    st.caption(
+        "Выберите столбец и вставьте список значений. "
+        "Каждое значение должно быть с новой строки."
+    )
+
+    selected_column = st.selectbox(
+        "Столбец для поиска:",
+        options=list(df.columns),
+        key=f"{key}_array_column"
+    )
+
+    array_input = st.text_area(
+        "Список значений:",
+        placeholder=(
+            "Например:\n"
+            "00-00000001\n"
+            "00-00000002\n"
+            "00-00000003"
+        ),
+        height=250,
+        key=f"{key}_array_input"
+    )
+
+    if st.button(
+        ":material/search: Найти",
+        key=f"{key}_array_search_button",
+        type="primary",
+        use_container_width=True
+    ):
+
+        # Получаем значения из строк
+        values = [
+            value.strip()
+            for value in array_input.splitlines()
+            if value.strip()
+        ]
+
+        if not values:
+
+            st.warning(
+                "Введите хотя бы одно значение."
+            )
+
+        else:
+
+            st.session_state[
+                f"{key}_array_column_applied"
+            ] = selected_column
+
+            st.session_state[
+                f"{key}_array_values_applied"
+            ] = values
+
+            st.rerun()
+
+
+# ============================================================
 # ПОИСК ПО ТАБЛИЦЕ
 # ============================================================
 
@@ -406,6 +475,23 @@ def filter_dataframe(
         ] = ""
 
     # --------------------------------------------------------
+    # СОСТОЯНИЕ ПОИСКА МАССИВА
+    # --------------------------------------------------------
+
+    if f"{key}_array_column_applied" not in st.session_state:
+
+        st.session_state[
+            f"{key}_array_column_applied"
+        ] = None
+
+
+    if f"{key}_array_values_applied" not in st.session_state:
+
+        st.session_state[
+            f"{key}_array_values_applied"
+        ] = []
+
+    # --------------------------------------------------------
     # ПРИМЕНИТЬ ПОИСК
     # --------------------------------------------------------
 
@@ -424,18 +510,28 @@ def filter_dataframe(
 
     def clear_search():
 
+        # Обычный поиск
         st.session_state[key] = ""
 
         st.session_state[
             f"{key}_applied"
         ] = ""
 
+        # Поиск массива
+        st.session_state[
+            f"{key}_array_column_applied"
+        ] = None
+
+        st.session_state[
+            f"{key}_array_values_applied"
+        ] = []
+
     # ========================================================
     # СТРОКА: ПОИСК + НАЙТИ + ОЧИСТИТЬ + СКАЧАТЬ
     # ========================================================
 
-    col1, col2, col3, col4 = st.columns(
-        [6, 1.2, 1.2, 1.2]
+    col1, col2, col3, col4, col5 = st.columns(
+        [4, 1.2, 1.2, 1.8, 1.2]
     )
 
     # --------------------------------------------------------
@@ -490,6 +586,30 @@ def filter_dataframe(
             use_container_width=True,
             on_click=clear_search
         )
+    
+    # --------------------------------------------------------
+    # КНОПКА ПОИСКА МАССИВА
+    # --------------------------------------------------------
+
+    with col4:
+
+        st.markdown(
+            """
+            <div style="height: 28px;"></div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        if st.button(
+            ":material/filter_alt: Поиск массива",
+            key=f"{key}_array_search",
+            use_container_width=True
+        ):
+
+            array_search_dialog(
+                df,
+                key
+            )
 
     # ========================================================
     # ФИЛЬТРАЦИЯ
@@ -517,6 +637,40 @@ def filter_dataframe(
         df_filtered = df[mask]
 
     # ========================================================
+    # ПОИСК МАССИВА
+    # ========================================================
+
+    array_column = st.session_state.get(
+        f"{key}_array_column_applied"
+    )
+
+    array_values = st.session_state.get(
+        f"{key}_array_values_applied",
+        []
+    )
+
+    if array_column and array_values:
+
+        # Приводим значения таблицы и списка к строкам
+        # и убираем лишние пробелы
+        normalized_values = {
+            str(value).strip().lower()
+            for value in array_values
+        }
+
+        array_mask = (
+            df_filtered[array_column]
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            .isin(normalized_values)
+        )
+
+        df_filtered = df_filtered[
+            array_mask
+        ]
+
+    # ========================================================
     # EXCEL
     # ========================================================
 
@@ -529,7 +683,7 @@ def filter_dataframe(
     # КНОПКА СКАЧИВАНИЯ
     # --------------------------------------------------------
 
-    with col4:
+    with col5:
 
         st.markdown(
             """
@@ -549,6 +703,20 @@ def filter_dataframe(
             key=f"download_{key}",
             use_container_width=True,
             help="Скачать таблицу в Excel"
+        )
+    
+    # ========================================================
+    # ИНФОРМАЦИЯ ОБ АКТИВНОМ ПОИСКЕ МАССИВА
+    # ========================================================
+
+    if array_column and array_values:
+
+        st.caption(
+            f":material/filter_alt: Поиск массива: столбец «{array_column}», "
+            f"значений в списке: {len(array_values):,}".replace(
+                ",",
+                " "
+            )
         )
 
     return df_filtered
@@ -1855,6 +2023,25 @@ with tab_kpi:
                 format_kpi(kpi["unmarked_pieces"])
             )
 
+        st.markdown("---")
+
+        # ====================================================
+        # СТРОКА 4 
+        # ====================================================
+
+        col10, col11 = st.columns(2)
+
+        with col10:
+            st.metric(
+                ":material/bookmark_add: Всего марок",
+                format_kpi(kpi["total_marks"])
+            )
+
+        with col11:
+            st.metric(
+                ":material/skull: Неотгруженных марок",
+                format_kpi(kpi["un_load_marks"])
+            )
 
     else:
         st.warning(

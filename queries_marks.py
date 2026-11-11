@@ -261,7 +261,9 @@ SELECT
     COUNT(DISTINCT nameen) FILTER (WHERE cnt_km = 0) AS unmarked_articles,
     SUM(basequantity) AS total_pieces,
     SUM(basequantity) FILTER (WHERE cnt_km > 0) AS marked_pieces,
-    SUM(basequantity) FILTER (WHERE cnt_km = 0) AS unmarked_pieces
+    SUM(basequantity) FILTER (WHERE cnt_km = 0) AS unmarked_pieces,
+    SUM(cnt_km) AS total_marks,
+    SUM(basequantity) - SUM(cnt_km) AS un_load_marks
 FROM base;
 """
 
