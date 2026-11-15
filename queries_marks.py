@@ -300,3 +300,53 @@ WHERE
         'g'
     ) || '%%';
 """
+
+# ============================================================
+# К-ВО ОТРГРУЖАЕМЫХ МАРОК
+# ============================================================
+
+QUERY_LOAD_MARK = """
+WITH base AS (
+    SELECT
+	    hd.purchasenumber,
+        so.barcode,
+        m.nameen,
+        m.nameru,
+        COUNT(s.cis_code) FILTER (
+            WHERE s.cis_level = '0'
+        ) AS cnt_km,
+        w.basequantity,
+        w.barcodeobject_id
+    FROM storageobjects AS so
+    JOIN warehousesummary AS w
+        ON so.tid = w.storageobject_id
+    AND w.basequantity > 0
+    LEFT JOIN cis.stock s
+        ON so.tid = s.storageobject_id
+    AND ((w.barcodeobject_id = s.barcodeobject_id
+    AND w.storageobject_id = s.storageobject_id)
+    OR (w.storageobject_id = s.storageobject_id
+    AND w.basequantity > 0))
+    JOIN materials AS m
+        ON w.material_id = m.tid
+    AND m.isam = '1'
+	JOIN hdr_delivery AS hd
+	    ON so.deliverytransaction_id = hd.transaction_id
+	WHERE hd.purchasenumber ILIKE %s
+    GROUP BY
+		hd.purchasenumber,
+        so.barcode,
+        m.nameen,
+        m.nameru,
+        w.basequantity,
+        w.barcodeobject_id
+)
+SELECT
+        barcode AS "Номер ОС",
+        nameen AS "Артикул",
+        nameru AS "Наименование",
+        cnt_km AS "Количество КМ",
+        basequantity AS "Количество штук"
+FROM base
+ORDER BY barcode, nameen;
+"""

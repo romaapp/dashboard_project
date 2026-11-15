@@ -18,6 +18,7 @@ from queries_marks import (
     QUERY_ALL_OS_WITH_CHZ,
     QUERY_CHZ_KPI,
     QUERY_SEARCH_BY_MARK,
+    QUERY_LOAD_MARK,
 )
 
 
@@ -105,6 +106,48 @@ def get_db_connection():
         user=user,
         password=password
     )
+
+
+# ============================================================
+# К-ВО ОТГРУЖАЕМЫХ МАРОК
+# ============================================================
+
+@st.cache_data(ttl=60)
+def get_load_marks(order_number):
+
+    order_number = str(
+        order_number or ""
+    ).strip()
+
+    if not order_number:
+        return pd.DataFrame()
+
+    try:
+
+        with get_db_connection() as conn:
+
+            with conn.cursor(
+                cursor_factory=RealDictCursor
+            ) as cur:
+
+                cur.execute(
+                    QUERY_LOAD_MARK,
+                    (
+                        f"%{order_number}%",
+                    )
+                )
+
+                results = cur.fetchall()
+
+                return pd.DataFrame(results)
+
+    except Exception as e:
+
+        st.error(
+            f"Ошибка поиска отгружаемых марок: {e}"
+        )
+
+        return pd.DataFrame()
 
 
 # ============================================================
@@ -747,6 +790,22 @@ if "chz_data_loaded" not in st.session_state:
 
 
 # ------------------------------------------------------------
+# Отгружаемые марки
+# ------------------------------------------------------------
+
+if "chz_load_marks_data" not in st.session_state:
+
+    st.session_state.chz_load_marks_data = (
+        pd.DataFrame()
+    )
+
+
+if "chz_load_marks_data_loaded" not in st.session_state:
+
+    st.session_state.chz_load_marks_data_loaded = False
+
+
+# ------------------------------------------------------------
 # Поиск ОС
 # ------------------------------------------------------------
 
@@ -816,8 +875,9 @@ if "chz_all_os_chz_data_loaded" not in st.session_state:
 # ВКЛАДКИ
 # ============================================================
 
-tab_accepted, tab_search_os, tab_search_mark, tab_all_os, tab_all_os_chz, tab_kpi = st.tabs(
-    [
+tab_load_marks, tab_accepted, tab_search_os, tab_search_mark, tab_all_os, tab_all_os_chz, tab_kpi = st.tabs(
+    [   
+        ":material/local_shipping: Отгружаемые марки",
         ":material/enable: Принятые марки",
         ":material/pageview: Подробная информация по ОС",
         ":material/manage_search: Поиск по марке",
@@ -826,6 +886,231 @@ tab_accepted, tab_search_os, tab_search_mark, tab_all_os, tab_all_os_chz, tab_kp
         ":material/whatshot: Ключевые показатели"
     ]
 )
+
+
+# ============================================================
+# ВКЛАДКА — ОТГРУЖАЕМЫЕ МАРКИ
+# ============================================================
+
+def trigger_load_mark_search():
+    st.session_state["chz_load_marks_enter_pressed"] = True
+
+with tab_load_marks:
+
+    st.caption(
+        "Поиск отгружаемых марок по номеру заказа "
+        "или его части."
+    )
+
+    # ========================================================
+    # ПОИСК
+    # ========================================================
+
+    col_input, col_search = st.columns(
+        [5, 1],
+        gap="small"
+    )
+
+    with col_input:
+
+        order_input = st.text_input(
+            "Номер заказа:",
+            placeholder=(
+                "Введите номер заказа или его часть"
+            ),
+            key="chz_load_marks_input",
+            on_change=trigger_load_mark_search
+        )
+
+    with col_search:
+
+        st.markdown(
+            """
+            <div style="height: 28px;"></div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        search_load_marks_clicked = st.button(
+            ":material/search: Найти",
+            key="chz_load_marks_search",
+            type="primary",
+            use_container_width=True
+        )
+
+        # ========================================================
+        # ВЫПОЛНЕНИЕ ПОИСКА
+        # ========================================================
+
+        if (
+            search_load_marks_clicked
+            or st.session_state.get(
+                "chz_load_marks_enter_pressed",
+                False
+            )
+        ):
+
+            st.session_state[
+                "chz_load_marks_enter_pressed"
+            ] = False
+
+            entered_order = order_input.strip()
+
+            if not entered_order:
+
+                st.warning(
+                    "Введите номер заказа."
+                )
+
+            else:
+
+                with st.spinner(
+                    "Поиск отгружаемых марок..."
+                ):
+
+                    df_load_marks = get_load_marks(
+                        entered_order
+                    )
+
+                st.session_state.chz_load_marks_data = (
+                    df_load_marks
+                )
+
+                st.session_state.chz_load_marks_data_loaded = True
+
+    # ========================================================
+    # ВЫВОД ДАННЫХ
+    # ========================================================
+
+    if st.session_state.chz_load_marks_data_loaded:
+
+        df_load_marks = (
+            st.session_state.chz_load_marks_data
+        )
+
+        if df_load_marks.empty:
+
+            st.info(
+                "По указанному номеру заказа "
+                "отгружаемые марки не найдены."
+            )
+
+        else:
+
+            st.markdown("---")
+
+            # =================================================
+            # СЧЁТЧИКИ
+            # =================================================
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+
+                st.metric(
+                    ":material/package_2: Всего ОС",
+                    f"{df_load_marks['Номер ОС'].nunique():,}"
+                    .replace(",", " ")
+                )
+
+            with col2:
+
+                total_km = (
+                    df_load_marks
+                    .drop_duplicates(
+                        subset=["Номер ОС"]
+                    )["Количество КМ"]
+                    .sum()
+                )
+
+                st.metric(
+                    ":material/bookmark_stacks: Всего КМ",
+                    f"{int(total_km or 0):,}".replace(
+                        ",",
+                        " "
+                    )
+                )
+
+            with col3:
+
+                total_pieces = (
+                    pd.to_numeric(
+                        df_load_marks["Количество штук"],
+                        errors="coerce"
+                    )
+                    .fillna(0)
+                    .sum()
+                )
+
+                st.metric(
+                    ":material/box: Всего штук",
+                    f"{int(total_pieces):,}".replace(
+                        ",",
+                        " "
+                    )
+                )
+
+            st.markdown("---")
+
+            # =================================================
+            # ПОИСК + ОЧИСТКА + МАССИВ + СКАЧИВАНИЕ
+            # =================================================
+
+            df_display_load_marks = filter_dataframe(
+                df_load_marks,
+                "chz_load_marks_table_search",
+                "Отгружаемые марки"
+            )
+
+            st.markdown("---")
+
+            # =================================================
+            # РЕЗУЛЬТАТ ПОИСКА
+            # =================================================
+
+            if st.session_state.get(
+                "chz_load_marks_table_search_applied"
+            ):
+
+                st.caption(
+                    f"🔎 Найдено строк: "
+                    f"{len(df_display_load_marks):,}"
+                    .replace(",", " ")
+                )
+
+            # =================================================
+            # ТАБЛИЦА
+            # =================================================
+
+            st.dataframe(
+                df_display_load_marks,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+
+                    "Номер ОС": st.column_config.TextColumn(
+                        "Номер ОС"
+                    ),
+
+                    "Артикул": st.column_config.TextColumn(
+                        "Артикул"
+                    ),
+
+                    "Наименование": st.column_config.TextColumn(
+                        "Наименование"
+                    ),
+
+                    "Количество КМ": st.column_config.NumberColumn(
+                        "Количество КМ",
+                        format="%d"
+                    ),
+
+                    "Количество штук": st.column_config.NumberColumn(
+                        "Количество штук",
+                        format="%d"
+                    )
+                }
+            )
 
 
 # ============================================================
