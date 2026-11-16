@@ -263,7 +263,10 @@ SELECT
     SUM(basequantity) FILTER (WHERE cnt_km > 0) AS marked_pieces,
     SUM(basequantity) FILTER (WHERE cnt_km = 0) AS unmarked_pieces,
     SUM(cnt_km) AS total_marks,
-    SUM(basequantity) - SUM(cnt_km) AS un_load_marks
+    CASE WHEN SUM(cnt_km) - SUM(basequantity) > 0
+    THEN SUM(cnt_km) - SUM(basequantity)
+    ELSE 0
+    END AS un_load_marks
 FROM base;
 """
 
@@ -342,6 +345,7 @@ WITH base AS (
         w.barcodeobject_id
 )
 SELECT
+        purchasenumber AS "Номер заявки",
         barcode AS "Номер ОС",
         nameen AS "Артикул",
         nameru AS "Наименование",
