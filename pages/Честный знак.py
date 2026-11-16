@@ -1015,21 +1015,27 @@ with tab_load_marks:
 
             with col2:
 
-                total_km = (
-                    df_load_marks
-                    .drop_duplicates(
-                        subset=["Номер ОС"]
-                    )["Количество КМ"]
-                    .sum()
-                )
-
                 st.metric(
                     ":material/bookmark_stacks: Всего КМ",
-                    f"{int(total_km or 0):,}".replace(
-                        ",",
-                        " "
-                    )
+                    f"{df_load_marks['Количество КМ'].sum():,}"
+                    .replace(",", " ")
                 )
+
+                # total_km = (
+                #     df_load_marks
+                #     .drop_duplicates(
+                #         subset=["Номер ОС"]
+                #     )["Количество КМ"]
+                #     .sum()
+                # )
+
+                # st.metric(
+                #     ":material/bookmark_stacks: Всего КМ",
+                #     f"{int(total_km or 0):,}".replace(
+                #         ",",
+                #         " "
+                #     )
+                # )
 
             with col3:
 

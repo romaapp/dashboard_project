@@ -326,10 +326,10 @@ WITH base AS (
     AND w.basequantity > 0
     LEFT JOIN cis.stock s
         ON so.tid = s.storageobject_id
-    AND ((w.barcodeobject_id = s.barcodeobject_id
+    AND (w.barcodeobject_id = s.barcodeobject_id
     AND w.storageobject_id = s.storageobject_id)
-    OR (w.storageobject_id = s.storageobject_id
-    AND w.basequantity > 0))
+    -- OR (w.storageobject_id = s.storageobject_id
+    -- AND w.basequantity > 0))
     JOIN materials AS m
         ON w.material_id = m.tid
     AND m.isam = '1'
