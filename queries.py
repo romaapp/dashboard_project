@@ -564,9 +564,86 @@ join lateral (
 order by a.nameen;
     """,
 
+	    'Заявки в работе': """
+SELECT DISTINCT
+		hd.deliverynumber AS "Номер заявки",
+		CONCAT(hd.deliverydate::date, ' ', hd.deliverytime) AS "Дата отгрузки",
+		hd.recorddate::char(16) AS "Загружен в WMS",
+		d.starteddate::char(16) AS "Старт",
+		d.readydate::char(16) AS "Готовность",
+        -- tts.status_name as "Статус",
+	    LAST_VALUE(ts.status_code) OVER (
+        PARTITION BY ts.transaction_id
+        ORDER BY ts.tid
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        ) AS "Статус",
+		hd.isfinished AS "Отгружен",
+		CASE WHEN COUNT(hm.tid) = 0 THEN COUNT(td.quantity)
+		ELSE COUNT(hm.tid)
+		END AS "Количество",
+		SUM(td.quantity*mu.nettoweight) AS "Вес",
+		SUM(td.quantity*mu.unitvolume) AS "Объем"
+FROM hdr_deliveryrequest AS hd
+JOIN hdr_delivery AS d ON d.purchasenumber = hd.deliverynumber
+JOIN transaction_statuses_log AS ts ON d.transaction_id = ts.transaction_id
+-- JOIN transaction_type_statuses AS tts ON ts.status_code = tts.status_code
+-- 	AND tts.transaction_type_id = 5
+JOIN tbl_deliveryrequestmaterials AS td ON td.transaction_id = hd.transaction_id
+LEFT JOIN hdr_materialpicking AS hm ON hm.row_id = td.tid
+JOIN materialunits AS mu ON td.materialunit_id = mu.tid
+WHERE hd.deliverytype_id = 7
+	AND d.shipmentdate::date BETWEEN (%s)::DATE AND %s::DATE
+GROUP BY hd.deliverynumber,
+		hd.deliverydate,
+		hd.deliverytime,
+		hd.recorddate,
+		d.starteddate,
+		d.readydate,
+		ts.status_code,
+		ts.tid,
+		hd.isfinished
+ORDER BY hd.deliverynumber;
+    """,
+
+	    'Неактивные ячейки': """
+WITH lp AS (
+SELECT
+		so.barcode,
+		l.locationname,
+	    LAST_VALUE(hm.finishdate) OVER (
+        PARTITION BY hm.sourcestorageobject_id
+        ORDER BY hm.finishdate ASC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+		) AS lastpick
+FROM storageobjects as so
+JOIN hdr_materialpicking as hm ON so.tid = hm.sourcestorageobject_id
+JOIN locations as l ON so.location_id = l.tid
+WHERE l.technozone_id = 105)
+SELECT DISTINCT
+		lp.barcode AS "ОС",
+		lp.locationname AS "Место",
+		lp.lastpick AS "Последний отбор",
+		current_date - lp.lastpick::date as "Прошло дней"
+FROM lp
+-- WHERE lp.lastpick::date < current_date -30
+ORDER BY lp.locationname;
+    """,
+
+
+
 
 # ============================================================
+# ============================================================
+# ============================================================
+# ============================================================
+# ============================================================
+# ============================================================
 # Отчеты Алексея
+# ============================================================
+# ============================================================
+# ============================================================
+# ============================================================
+# ============================================================
 # ============================================================
 
 	    'Производительность комплектации': """

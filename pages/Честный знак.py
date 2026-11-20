@@ -19,6 +19,7 @@ from queries_marks import (
     QUERY_CHZ_KPI,
     QUERY_SEARCH_BY_MARK,
     QUERY_LOAD_MARK,
+    QUERY_MARKS_ORDERS,
 )
 
 
@@ -106,6 +107,32 @@ def get_db_connection():
         user=user,
         password=password
     )
+
+
+# ============================================================
+# К-ВО МАРОК В ЗАКАЗАХ
+# ============================================================
+
+@st.cache_data(ttl=60)
+def get_marks_orders():
+
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor(
+                cursor_factory=RealDictCursor
+            ) as cur:
+
+                cur.execute(QUERY_MARKS_ORDERS)
+
+                results = cur.fetchall()
+
+                return pd.DataFrame(results)
+
+    except Exception as e:
+        st.error(
+            f"Ошибка загрузки количества марок в заказах: {e}"
+        )
+        return pd.DataFrame()
 
 
 # ============================================================
@@ -790,6 +817,17 @@ if "chz_data_loaded" not in st.session_state:
 
 
 # ------------------------------------------------------------
+# К-ВО МАРОК В ЗАКАЗАХ
+# ------------------------------------------------------------
+
+if "chz_marks_orders_data" not in st.session_state:
+    st.session_state.chz_marks_orders_data = pd.DataFrame()
+
+if "chz_marks_orders_loaded" not in st.session_state:
+    st.session_state.chz_marks_orders_loaded = False
+
+
+# ------------------------------------------------------------
 # Отгружаемые марки
 # ------------------------------------------------------------
 
@@ -896,6 +934,68 @@ def trigger_load_mark_search():
     st.session_state["chz_load_marks_enter_pressed"] = True
 
 with tab_load_marks:
+
+    # ========================================================
+    # ОТЧЕТ 1 — К-ВО МАРОК В ЗАКАЗАХ
+    # ========================================================
+
+    st.caption(
+        "Все заказы с марками на данный момент"
+    )
+
+    if st.button(
+        ":material/download: Загрузить данные",
+        key="chz_marks_orders_load",
+        type="primary",
+        use_container_width=True
+    ):
+
+        with st.spinner("Загрузка данных..."):
+
+            df_marks_orders = get_marks_orders()
+
+            st.session_state.chz_marks_orders_data = (
+                df_marks_orders
+            )
+
+            st.session_state.chz_marks_orders_loaded = True
+
+    # --------------------------------------------------------
+    # ВЫВОД ДАННЫХ
+    # --------------------------------------------------------
+
+    if st.session_state.chz_marks_orders_loaded:
+
+        df_marks_orders = (
+            st.session_state.chz_marks_orders_data
+        )
+
+        if df_marks_orders.empty:
+
+            st.info("Данные не найдены.")
+
+        else:
+
+            st.dataframe(
+                df_marks_orders,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Номер заявки": st.column_config.TextColumn(
+                        "Номер заявки"
+                    ),
+                    "Количество КМ": st.column_config.NumberColumn(
+                        "Количество КМ",
+                        format="%d"
+                    ),
+                    "Количество штук": st.column_config.NumberColumn(
+                        "Количество штук",
+                        format="%d"
+                    )
+                }
+            )
+
+    st.markdown("---")
 
     st.caption(
         "Поиск отгружаемых марок по номеру заказа "
